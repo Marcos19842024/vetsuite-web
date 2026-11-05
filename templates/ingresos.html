@@ -1,0 +1,551 @@
+{% extends "base.html" %}
+{% block title %}Ingresos{% endblock %}
+{% block content %}
+<!-- Header -->
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Ingresos</h2>
+        </div>
+    </div>
+</div>
+
+{% if resumen %}
+<div class="alert alert-success mb-3">{{ resumen }}</div>
+{% endif %}
+
+{% if productos %}
+<div class="alert alert-info mb-3">Factura procesada: revisa los productos y confirma en el formulario.</div>
+{% endif %}
+
+<!-- Barra de herramientas -->
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+        <div class="btn-list">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="abrirModalDescarga()" {% if not gmail_configurado %}disabled title="Configura Gmail primero"{% endif %}>
+                📥 Descargar de Gmail
+            </button>
+            <button
+                type="button" class="btn btn-outline-secondary btn-sm"
+                onclick="abrirModalReportes()">
+                📋 Ver registros
+            </button>
+            <span class="vr mx-2"></span>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('modal-zip').showModal()">
+                📦 ZIP mensual
+            </button>
+            <a href="/ingresos/excel{% if filtros.desde or filtros.hasta or filtros.sucursal %}?desde={{ filtros.desde }}&hasta={{ filtros.hasta }}&sucursal={{ filtros.sucursal }}{% endif %}"
+                class="btn btn-outline-success btn-sm">
+                📊 Exportar Excel
+            </a>
+        </div>
+        
+        {# Menú "⋯ Más" #}
+        <div class="ms-auto btn-list">
+            <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                    ⋯ Más
+                </button>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <form method="post" action="/ingresos/revisar-todo">
+                        <button type="submit" class="dropdown-item" onclick="return confirm('Reprocesar facturas sin datos_json?')">🔄 Revisar histórico</button>
+                    </form>
+                    <a class="dropdown-item" href="/ingresos/catalogo">📚 Ver catálogo</a>
+                    <a class="dropdown-item" href="/ingresos/reclasificar">🏷️ Reclasificar</a>
+                    <a class="dropdown-item d-flex justify-content-between" href="/ingresos/rechazados">
+                        ⚠️ Rechazados
+                        {% if rechazados_count > 0 %}<span class="badge bg-danger text-white ms-2">{{ rechazados_count }}</span>{% endif %}
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <form method="post" action="/ingresos/reset" onsubmit="return confirmarReset(event)">
+                        <button type="submit" class="dropdown-item text-danger">🗑️ Reset Ingresos</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" action="/ingresos" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Desde</label>
+                <input type="date" class="form-control form-control-sm" name="desde" value="{{ filtros.desde }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Hasta</label>
+                <input type="date" class="form-control form-control-sm" name="hasta" value="{{ filtros.hasta }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Sucursal</label>
+                <select class="form-select form-select-sm" name="sucursal">
+                    <option value="">Todas</option>
+                    {% for s in sucursales %}
+                    <option value="{{ s }}" {% if s == filtros.sucursal %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto ms-auto">
+                <button type="submit" class="btn btn-primary btn-sm">🔍 Filtrar</button>
+                <a href="/ingresos" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabla -->
+<div class="card">
+    <div class="tabla-scroll">
+        <table class="table table-vcenter table-sm table-hover card-table table-striped">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Folio</th>
+                    <th>Cliente</th>
+                    <th>RFC</th>
+                    <th class="text-end">Total</th>
+                    <th>Sucursal</th>
+                    <th>Notas</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.fecha }}</td>
+                    <td>{{ r.folio }}</td>
+                    <td class="text-truncate" style="max-width: 200px;">{{ r.cliente }}</td>
+                    <td>{{ r.rfc }}</td>
+                    <td class="text-end font-monospace">${{ "%.2f"|format(r.total) }}</td>
+                    <td>{% if r.sucursal %}{{ r.sucursal }}{% else %}<span class="badge bg-warning text-dark">Sin sucursal</span>{% endif %}</td>
+                    <td><small class="text-muted">{{ r.notas }}</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="4" class="fw-bold">TOTAL</td>
+                    <td class="text-end font-monospace fw-bold">${{ "%.2f"|format(total) }}</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- ============================================================
+     MODAL: Descarga de Gmail
+     ============================================================ -->
+<dialog id="modal-descarga">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">📥 Descargar facturas de Gmail</h5>
+            <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-descarga').close()"></button>
+        </div>
+        <div class="modal-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Configuración de la cuenta:</span>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary btn-sm"
+                    onclick="document.getElementById('modal-descarga').close(); document.getElementById('modal-config-gmail').showModal();">
+                    ⚙️ Editar credenciales
+                </button>
+            </div>
+            <hr class="my-3">
+
+            <div class="mb-4">
+                <label class="form-check">
+                    <input class="form-check-input" type="radio" name="modo" value="no_leidos" checked>
+                    <span class="form-check-label">Solo no leídos</span>
+                </label>
+                <label class="form-check">
+                    <input class="form-check-input" type="radio" name="modo" value="rango">
+                    <span class="form-check-label">Rango de fechas</span>
+                </label>
+                <label class="form-check">
+                    <input class="form-check-input" type="radio" name="modo" value="ultimos">
+                    <span class="form-check-label">Últimos <input type="number" name="valor_n" value="10" class="form-control d-inline-block" style="width: 80px; margin: 0 5px;"> días</span>
+                </label>
+            </div>
+            
+            <div id="campos-rango" style="display:none;" class="row g-3 mb-4">
+                <div class="col-6">
+                    <label class="form-label">Desde</label>
+                    <input type="date" name="desde" class="form-control">
+                </div>
+                <div class="col-6">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" name="hasta" class="form-control">
+                </div>
+            </div>
+
+            <div id="progreso-wrap" style="display:none;">
+                <div class="progress mb-2">
+                    <div id="barra-fill" class="progress-bar progress-bar-indeterminate"></div>
+                </div>
+                <p id="progreso-texto" class="text-muted small"></p>
+                <pre id="progreso-log" class="log-box"></pre>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" id="btn-descargar" class="btn btn-primary btn-sm">📥 Iniciar descarga</button>
+        </div>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     MODAL: Configuración Gmail
+     ============================================================ -->
+<dialog id="modal-config-gmail">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">⚙️ Configuración de Gmail</h5>
+            <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-config-gmail').close(); abrirModalDescarga()"></button>
+        </div>
+        <form id="form-config-gmail" action="/config/gmail">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Correo (Gmail)</label>
+                    <input type="email" name="usuario" class="form-control" required value="{{ cfg.usuario or '' }}" placeholder="tucorreo@gmail.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Contraseña de aplicación</label>
+                    <input type="password" name="password_app" class="form-control" required value="{{ cfg.password_app or '' }}" placeholder="abcd efgh ijkl mnop">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Etiqueta de Gmail</label>
+                    <input type="text" name="etiqueta" class="form-control" required value="{{ cfg.etiqueta or '' }}" placeholder="FACTURAS BAALAK">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Filtro de remitente (opcional)</label>
+                    <input type="text" name="filtro_remitente" class="form-control" value="{{ cfg.filtro_remitente or '' }}" placeholder="qvet">
+                </div>
+                <div class="alert alert-info py-2 mb-0" style="font-size: 0.8rem;">
+                    <strong>¿Cómo obtener la contraseña?</strong><br>
+                    Ve a <a href="https://myaccount.google.com/security" target="_blank">Seguridad de Google</a>, activa la verificación en 2 pasos, y genera una "Contraseña de aplicación".
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     MODAL: ZIP mensual
+     ============================================================ -->
+<dialog id="modal-zip">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">📦 Descargar ZIP mensual</h5>
+            <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-zip').close()"></button>
+        </div>
+        <form method="get" action="/ingresos/zip">
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Incluye el Excel del mes + todos los XML y PDF de la sucursal seleccionada.</p>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Año</label>
+                        <input type="number" name="anio" class="form-control" required value="{{ anio_actual }}" min="2000" max="2100">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Mes</label>
+                        <select name="mes" class="form-select" required>
+                            {% for m in range(1, 13) %}
+                            <option value="{{ m }}" {% if m == mes_actual %}selected{% endif %}>{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Sucursal</label>
+                        <select name="sucursal" class="form-select" required>
+                            <option value="Baalak">Baalak</option>
+                            <option value="Prado">Prado</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-success btn-sm">📦 Descargar ZIP</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- MODAL: Reportes (árbol Año → Mes → Sucursal) -->
+<dialog id="modal-reportes" style="max-width: 720px; width: 90vw;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">📊 Reportes disponibles</h5>
+            <button type="button" class="btn-close btn-sm"
+                    onclick="document.getElementById('modal-reportes').close()"></button>
+        </div>
+        <div class="modal-body" style="max-height: 70vh; overflow: auto;">
+            <div id="arbol-reportes">
+                <div class="text-muted text-center py-4">Cargando...</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <span class="text-muted small me-auto" id="arbol-resumen"></span>
+        </div>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     JS
+     ============================================================ -->
+<script>
+function abrirModalDescarga() {
+    document.getElementById('modal-descarga').showModal();
+}
+
+// ============================================================
+// Modal de reportes (árbol jerárquico)
+// ============================================================
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+async function abrirModalReportes() {
+    const modal = document.getElementById('modal-reportes');
+    const cont = document.getElementById('arbol-reportes');
+    const resumen = document.getElementById('arbol-resumen');
+
+    modal.showModal();
+    cont.innerHTML = '<div class="text-muted text-center py-4">Cargando...</div>';
+    resumen.textContent = '';
+
+    try {
+        const resp = await fetch('/ingresos/arbol');
+        const data = await resp.json();
+
+        if (!data || Object.keys(data).length === 0) {
+            cont.innerHTML = '<div class="text-muted text-center py-4">No hay registros aún.</div>';
+            return;
+        }
+
+        cont.innerHTML = '';
+        const ul = document.createElement('ul');
+        ul.className = 'arbol-reportes';
+
+        const anios = Object.keys(data).filter(k => k !== '_total').sort().reverse();
+        for (const anio of anios) {
+            ul.appendChild(crearNodoAnio(anio, data[anio]));
+        }
+        cont.appendChild(ul);
+
+        const tGlobal = data._total || {n: 0, total: 0};
+        resumen.textContent = `Total general: ${tGlobal.n} registros · $${fmt(tGlobal.total)}`;
+
+    } catch (e) {
+        cont.innerHTML = `<div class="text-danger text-center py-4">Error: ${e}</div>`;
+    }
+}
+
+function crearNodoAnio(anio, meses) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const t = meses._total || {n: 0, total: 0};
+    sum.innerHTML = `<strong>📅 ${anio}</strong>
+                     <span class="text-muted small ms-2">${t.n} registros · $${fmt(t.total)}</span>`;
+    det.appendChild(sum);
+
+    const ulMes = document.createElement('ul');
+    const clavesMes = Object.keys(meses).filter(k => k !== '_total').sort();
+    for (const mes of clavesMes) {
+        ulMes.appendChild(crearNodoMes(anio, mes, meses[mes]));
+    }
+    det.appendChild(ulMes);
+    li.appendChild(det);
+    return li;
+}
+
+function crearNodoMes(anio, mes, sucursales) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const t = sucursales._total || {n: 0, total: 0};
+    const nombreMes = MESES_ES[parseInt(mes) - 1] || mes;
+    sum.innerHTML = `<strong>📆 ${nombreMes}</strong>
+                     <span class="text-muted small ms-2">${t.n} registros · $${fmt(t.total)}</span>`;
+
+    // Doble clic: aplicar filtro mes completo (todas las sucursales)
+    sum.addEventListener('dblclick', (ev) => {
+        ev.preventDefault();
+        aplicarFiltro(anio, mes, '');
+    });
+    sum.title = 'Doble clic para ver todo el mes';
+
+    det.appendChild(sum);
+
+    const ulSuc = document.createElement('ul');
+    const clavesSuc = Object.keys(sucursales).filter(k => k !== '_total').sort();
+    for (const suc of clavesSuc) {
+        ulSuc.appendChild(crearNodoSucursal(anio, mes, suc, sucursales[suc]));
+    }
+    det.appendChild(ulSuc);
+    li.appendChild(det);
+    return li;
+}
+
+function crearNodoSucursal(anio, mes, sucursal, info) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'nodo-sucursal';
+    const nombreSuc = sucursal === '_sin_sucursal' ? 'Sin sucursal' : sucursal;
+    a.innerHTML = `🏢 ${nombreSuc}
+                   <span class="text-muted small ms-2">${info.n} registros · $${fmt(info.total)}</span>`;
+    a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        aplicarFiltro(anio, mes, sucursal === '_sin_sucursal' ? '' : sucursal);
+    });
+    li.appendChild(a);
+    return li;
+}
+
+function aplicarFiltro(anio, mes, sucursal) {
+    const params = new URLSearchParams();
+    if (anio && mes) {
+        const desde = `${anio}-${mes.padStart(2, '0')}-01`;
+        const ultimoDia = new Date(parseInt(anio), parseInt(mes), 0).getDate();
+        const hasta = `${anio}-${mes.padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+        params.set('desde', desde);
+        params.set('hasta', hasta);
+    }
+    if (sucursal) params.set('sucursal', sucursal);
+    document.getElementById('modal-reportes').close();
+    window.location = '/ingresos?' + params.toString();
+}
+
+function fmt(n) {
+    return (n || 0).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+// Mostrar/ocultar campos de rango
+document.querySelectorAll('input[name="modo"]').forEach(r => {
+    r.addEventListener('change', () => {
+        const val = document.querySelector('input[name="modo"]:checked').value;
+        document.getElementById('campos-rango').style.display = (val === 'rango') ? 'flex' : 'none';
+    });
+});
+
+// --- Descarga de Gmail ---
+document.getElementById('btn-descargar')?.addEventListener('click', async function() {
+    const modo = document.querySelector('input[name="modo"]:checked').value;
+    const valorN = document.querySelector('input[name="valor_n"]').value;
+    const desde = document.querySelector('input[name="desde"]').value;
+    const hasta = document.querySelector('input[name="hasta"]').value;
+
+    this.disabled = true;
+    document.getElementById('progreso-wrap').style.display = 'block';
+    document.getElementById('barra-fill').style.width = '0%';
+    document.getElementById('progreso-texto').textContent = 'Iniciando...';
+    document.getElementById('progreso-log').textContent = '';
+
+    const fd = new URLSearchParams();
+    fd.append('modo', modo);
+    fd.append('valor_n', valorN);
+    fd.append('desde', desde);
+    fd.append('hasta', hasta);
+
+    try {
+        const resp = await fetch('/ingresos/descargar-gmail', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: fd
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        pollJob(data.job_id);
+    } catch (e) {
+        document.getElementById('progreso-texto').textContent = 'Error: ' + e.message;
+        this.disabled = false;
+    }
+});
+
+function pollJob(jobId) {
+    const fill = document.getElementById('barra-fill');
+    const texto = document.getElementById('progreso-texto');
+    const logBox = document.getElementById('progreso-log');
+    const btn = document.getElementById('btn-descargar');
+
+    const timer = setInterval(async () => {
+        try {
+            const resp = await fetch('/ingresos/estado-descarga/' + jobId);
+            const job = await resp.json();
+            fill.style.width = (job.progreso || 0) + '%';
+            const msgs = job.mensajes || [];
+            if (msgs.length > 0) {
+                texto.textContent = msgs[msgs.length - 1];
+                logBox.textContent = msgs.join('\n');
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+            if (job.estado === 'ok' || job.estado === 'error') {
+                clearInterval(timer);
+                btn.disabled = false;
+                if (job.estado === 'ok' && job.resultado) {
+                    texto.textContent = job.resultado.resumen;
+                    setTimeout(() => {
+                        window.location.href = '/ingresos?resumen=' + encodeURIComponent(job.resultado.resumen);
+                    }, 2000);
+                } else {
+                    texto.textContent = 'Error: revisa el log';
+                }
+            }
+        } catch (e) { console.error(e); }
+    }, 2000);
+}
+
+// --- Guardar Configuración Gmail (AJAX) ---
+document.getElementById('form-config-gmail')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = this.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    try {
+        const formData = new FormData(this);
+        const resp = await fetch(this.action, {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (resp.ok) {
+            // 1. Cerrar modal de config
+            document.getElementById('modal-config-gmail').close();
+            
+            // 2. Volver a abrir modal de descarga (sin recargar)
+            document.getElementById('modal-descarga').showModal();
+            
+            // 3. Si el botón principal estaba deshabilitado, habilitarlo ahora
+            const btnDescargarPrincipal = document.querySelector('button[onclick="abrirModalDescarga()"]');
+            if (btnDescargarPrincipal) {
+                btnDescargarPrincipal.disabled = false;
+                btnDescargarPrincipal.removeAttribute('title');
+            }
+        } else {
+            alert('Error al guardar la configuración');
+        }
+    } catch (err) {
+        alert('Error de red: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+});
+
+// --- Reset ---
+function confirmarReset(event) {
+    if (!confirm('⚠️ RESET TOTAL DE INGRESOS\n\nSe van a borrar:\n• Todos los registros\n• Todos los archivos XML/PDF\n• Logs y temporales\n• Caché de correos\n\n¿Continuar?')) {
+        event.preventDefault();
+        return false;
+    }
+    return confirm('ÚLTIMA CONFIRMACIÓN\n\n¿Estás SEGURO?\n\nEsta acción NO se puede deshacer.');
+}
+</script>
+{% endblock %}

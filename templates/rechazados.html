@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">⚠️ Rechazados, Sin PDF y Duplicados</h2>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="/ingresos" class="btn btn-outline-secondary btn-sm">← Volver a Ingresos</a>
+        </div>
+    </div>
+</div>
+
+{% if mensaje %}<div class="alert alert-success mb-3">{{ mensaje }}</div>{% endif %}
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link {% if tab == 'rechazados' %}active{% endif %}" href="/ingresos/rechazados?tab=rechazados">
+            ⚠️ Rechazados ({{ n_rechazados }})
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if tab == 'sin_pdf' %}active{% endif %}" href="/ingresos/rechazados?tab=sin_pdf">
+            📄 Sin PDF ({{ n_sin_pdf }})
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if tab == 'duplicados' %}active{% endif %}" href="/ingresos/rechazados?tab=duplicados">
+            📑 Duplicados ({{ n_duplicados }})
+        </a>
+    </li>
+</ul>
+
+{% if tab == 'rechazados' %}
+<div class="card">
+    <div class="tabla-scroll">
+        <table class="table table-vcenter table-sm card-table table-striped">
+            <thead>
+                <tr><th>Archivo</th><th>Carpeta</th><th>Folio/UUID</th><th>Error</th><th class="text-end">Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for item in rechazados %}
+                <tr>
+                    <td>{{ item.nombre_base }}</td>
+                    <td><small class="text-muted">{{ item.carpeta_rel }}</small></td>
+                    <td>
+                        {% if item.info %}
+                            {{ item.info.no_factura or '?' }}<br><small class="text-muted">{{ item.info.folio_fiscal[:13] }}...</small>
+                        {% else %}?{% endif %}
+                    </td>
+                    <td>
+                        {% if item.error %}<pre class="bg-light text-danger p-1 rounded small" style="max-height: 60px; overflow: auto;">{{ item.error[:200] }}</pre>{% else %}<small>—</small>{% endif %}
+                    </td>
+                    <td class="text-end btn-list flex-nowrap justify-content-end">
+                        {% if item.xml %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
+                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">PDF</a>{% endif %}
+                        <a href="/ingresos/rechazados/rescatar/{{ item.carpeta_rel }}/{{ item.nombre_base }}" class="btn btn-sm btn-success">Rescatar</a>
+                        <form method="post" action="/ingresos/rechazados/eliminar/rechazados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
+                            <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
+                            <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% elif tab == 'sin_pdf' %}
+<div class="card">
+    <div class="tabla-scroll">
+        <table class="table table-vcenter table-sm card-table table-striped">
+            <thead><tr><th>Archivo</th><th>Carpeta</th><th>Folio/UUID</th><th class="text-end">Acciones</th></tr></thead>
+            <tbody>
+                {% for item in sin_pdf %}
+                <tr>
+                    <td>{{ item.nombre_base }}</td>
+                    <td><small class="text-muted">{{ item.carpeta_rel }}</small></td>
+                    <td>{% if item.info %}{{ item.info.no_factura or '?' }}<br><small class="text-muted">{{ item.info.folio_fiscal[:13] }}...</small>{% else %}?{% endif %}</td>
+                    <td class="text-end btn-list flex-nowrap justify-content-end">
+                        {% if item.xml %}<a href="/ingresos/rechazados/ver/sin_pdf/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
+                        <form method="post" action="/ingresos/rechazados/eliminar/sin_pdf" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
+                            <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
+                            <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% elif tab == 'duplicados' %}
+{% if duplicados %}
+<div class="mb-2">
+    <form method="post" action="/ingresos/rechazados/eliminar-todos-duplicados" onsubmit="return confirm('¿Eliminar TODOS los duplicados?')">
+        <button type="submit" class="btn btn-danger btn-sm">🗑️ Eliminar todos ({{ n_duplicados }})</button>
+    </form>
+</div>
+{% endif %}
+<div class="card">
+    <div class="tabla-scroll">
+        <table class="table table-vcenter table-sm card-table table-striped">
+            <thead><tr><th>Archivo</th><th>Carpeta</th><th>Folio</th><th>Ya en BD</th><th class="text-end">Acciones</th></tr></thead>
+            <tbody>
+                {% for item in duplicados %}
+                <tr>
+                    <td>{{ item.nombre_base }}</td>
+                    <td><small class="text-muted">{{ item.carpeta_rel }}</small></td>
+                    <td>{% if item.info %}{{ item.info.no_factura or '?' }}{% else %}?{% endif %}</td>
+                    <td>{% if item.en_bd %}<span class="badge bg-success text-white">✓ {{ item.en_bd.folio }}</span> <small>{{ item.en_bd.fecha }}</small>{% else %}<small>—</small>{% endif %}</td>
+                    <td class="text-end btn-list flex-nowrap justify-content-end">
+                        {% if item.xml %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
+                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">PDF</a>{% endif %}
+                        <form method="post" action="/ingresos/rechazados/eliminar/duplicados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
+                            <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
+                            <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

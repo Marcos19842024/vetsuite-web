@@ -1,0 +1,344 @@
+"""
+Descarga de adjuntos XML/PDF de Gmail vía IMAP.
+Versión web con rango de fechas libre.
+"""
+import json
+import re
+import imaplib
+import email
+from email.header import decode_header
+from pathlib import Path
+from datetime import datetime, timedelta
+
+
+IMAP_SERVER = "imap.gmail.com"
+IMAP_PORT = 993
+
+BASE_DIR = Path(__file__).parent
+CARPETA_UPLOADS = BASE_DIR / "uploads" / "ingresos"
+CARPETA_LOGS = BASE_DIR / "uploads" / "logs"
+CARPETA_CACHE = BASE_DIR / "uploads" / "correos_procesados.json"
+
+
+def _ruta_log():
+    CARPETA_LOGS.mkdir(parents=True, exist_ok=True)
+    nombre = datetime.now().strftime("sync_%Y-%m-%d_%H-%M-%S.log")
+    return CARPETA_LOGS / nombre
+
+
+def cargar_cache_correos():
+    if CARPETA_CACHE.exists():
+        try:
+            with open(CARPETA_CACHE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return set(data.get("ids", []))
+        except Exception:
+            pass
+    return set()
+
+
+def guardar_cache_correos(ids):
+    CARPETA_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    with open(CARPETA_CACHE, "w", encoding="utf-8") as f:
+        json.dump({"ids": sorted(ids)}, f, ensure_ascii=False, indent=2)
+
+
+def _decodificar_cabecera(valor):
+    if not valor:
+        return ""
+    partes = decode_header(valor)
+    resultado = []
+    for texto, encoding in partes:
+        if isinstance(texto, bytes):
+            try:
+                texto = texto.decode(encoding or "utf-8", errors="ignore")
+            except Exception:
+                texto = texto.decode("utf-8", errors="ignore")
+        resultado.append(texto)
+    return "".join(resultado)
+
+
+def _fecha_imap_desde_iso(fecha_iso):
+    """
+    'YYYY-MM-DD' → 'DD-Mon-YYYY' (formato IMAP).
+    Si no se puede parsear, devuelve None.
+    """
+    if not fecha_iso:
+        return None
+    try:
+        dt = datetime.strptime(fecha_iso.strip()[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+    meses = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return f"{dt.day:02d}-{meses[dt.month-1]}-{dt.year}"
+
+
+def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
+                              carpeta_destino=None,
+                              solo_no_leidos=False,
+                              filtro_remitente=None,
+                              fecha_desde=None,
+                              fecha_hasta=None,
+                              usar_cache=True,
+                              callback_log=None,
+                              callback_progreso=None,
+                              callback_cancelado=None):
+    """
+    fecha_desde, fecha_hasta: strings 'YYYY-MM-DD' (o None).
+    Si fecha_hasta está presente, se le suma 1 día porque IMAP BEFORE
+    es exclusivo.
+    """
+    ruta_log = _ruta_log()
+    archivo_log = open(ruta_log, "w", encoding="utf-8")
+
+    def log(msg):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        linea = f"[{timestamp}] {msg}"
+        try:
+            archivo_log.write(linea + "\n")
+            archivo_log.flush()
+        except Exception:
+            pass
+        if callback_log:
+            callback_log(msg)
+
+    def progreso(texto):
+        if callback_progreso:
+            try:
+                callback_progreso(texto)
+            except Exception:
+                pass
+
+    log(f"Log guardado en: {ruta_log}")
+
+    carpeta_destino = Path(carpeta_destino) if carpeta_destino else CARPETA_UPLOADS
+    carpeta_destino.mkdir(parents=True, exist_ok=True)
+
+    descargados = []
+    errores = []
+    qvet_por_archivo = {}
+    no_factura_por_archivo = {}
+    archivos_por_correo = {}
+    info = {
+        "total_correos": 0,
+        "procesados": 0,
+        "omitidos_cache": 0,
+        "omitidos_filtros": 0,
+        "log": str(ruta_log),
+    }
+
+    cache_ids = cargar_cache_correos() if usar_cache else set()
+    ids_procesados_esta_vez = set()
+
+    try:
+        progreso("Conectando a Gmail...")
+        log(f"Conectando a {IMAP_SERVER}...")
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        mail.login(usuario, password_app)
+        log("Conexion exitosa")
+
+        etiqueta_escaped = etiqueta.replace('"', '\\"')
+        log(f"Abriendo etiqueta: {etiqueta}")
+        status, data = mail.select(f'"{etiqueta_escaped}"')
+        if status != "OK":
+            status, data = mail.select(etiqueta_escaped)
+        if status != "OK":
+            errores.append(f"No se pudo abrir la etiqueta '{etiqueta}'")
+            return descargados, errores, info
+
+        # ---- Criterios de búsqueda ----
+        criterios = []
+        if solo_no_leidos:
+            criterios.append("UNSEEN")
+
+        imap_desde = _fecha_imap_desde_iso(fecha_desde)
+        if imap_desde:
+            criterios.append(f'SINCE "{imap_desde}"')
+            log(f"Filtro desde: {imap_desde}")
+
+        if fecha_hasta:
+            imap_hasta_base = _fecha_imap_desde_iso(fecha_hasta)
+            if imap_hasta_base:
+                try:
+                    dt = datetime.strptime(fecha_hasta[:10], "%Y-%m-%d")
+                    dt_mas = dt + timedelta(days=1)
+                    meses = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                    imap_hasta = (f"{dt_mas.day:02d}-"
+                                  f"{meses[dt_mas.month-1]}-{dt_mas.year}")
+                except ValueError:
+                    imap_hasta = imap_hasta_base
+                criterios.append(f'BEFORE "{imap_hasta}"')
+                log(f"Filtro hasta: {imap_hasta} (exclusivo, +1 dia)")
+
+        if filtro_remitente:
+            criterios.append(f'FROM "{filtro_remitente}"')
+            log(f"Filtro de remitente: {filtro_remitente}")
+
+        criterio_final = "ALL" if not criterios else "(" + " ".join(criterios) + ")"
+
+        progreso("Buscando correos en la etiqueta...")
+        log(f"Buscando correos con criterio: {criterio_final}")
+        status, data = mail.search(None, criterio_final)
+        if status != "OK":
+            errores.append("Error al buscar correos")
+            return descargados, errores, info
+
+        ids = data[0].split()
+        info["total_correos"] = len(ids)
+        log(f"Correos encontrados: {len(ids)}")
+
+        if not ids:
+            progreso("No hay correos en el rango.")
+            return descargados, errores, info
+
+        total_correos = len(ids)
+        cancelado = False
+
+        for i, num in enumerate(ids, 1):
+            try:
+                if callback_cancelado and callback_cancelado():
+                    log("Cancelacion solicitada")
+                    cancelado = True
+                    break
+
+                porcentaje = int((i / total_correos) * 100)
+                progreso(
+                    f"Correo {i} de {total_correos} ({porcentaje}%) | "
+                    f"Descargados: {len(descargados)} archivos"
+                )
+
+                status, msg_data = mail.fetch(num, "(RFC822)")
+                if status != "OK":
+                    errores.append(f"Error al obtener correo {num}")
+                    continue
+
+                raw_email = msg_data[0][1]
+                msg = email.message_from_bytes(raw_email)
+
+                message_id = (msg.get("Message-ID") or "").strip()
+                if usar_cache and message_id and message_id in cache_ids:
+                    log(f"[{i}/{len(ids)}] Ya procesado (cache). Se omite.")
+                    info["omitidos_cache"] += 1
+                    continue
+
+                asunto = _decodificar_cabecera(msg.get("Subject", ""))
+                remitente = _decodificar_cabecera(msg.get("From", ""))
+                log(f"[{i}/{len(ids)}] Asunto: {asunto}")
+
+                qvet_detectado = ""
+                no_factura_detectado = ""
+                m_asunto = re.search(
+                    r"([A-Za-z0-9]+(?:/[A-Za-z0-9]+)?)\s*-\s*(\d+)",
+                    asunto, re.IGNORECASE
+                )
+                if m_asunto:
+                    serie_completa = m_asunto.group(1).strip()
+                    folio_str = m_asunto.group(2).strip()
+                    if folio_str.isdigit():
+                        no_factura_detectado = str(int(folio_str))
+                    else:
+                        no_factura_detectado = folio_str
+                    if "/" in serie_completa:
+                        serie_parte, num_parte = serie_completa.split("/", 1)
+                        serie_norm = serie_parte.strip().upper()
+                        if serie_norm == "PRADO":
+                            serie_norm = "PRADOS"
+                        num_parte = num_parte.strip()
+                        if num_parte.isdigit():
+                            num_parte = str(int(num_parte))
+                        qvet_detectado = f"{serie_norm}/{num_parte}"
+                    else:
+                        qvet_detectado = serie_completa.upper()
+
+                if filtro_remitente:
+                    if filtro_remitente.lower() not in remitente.lower():
+                        info["omitidos_filtros"] += 1
+                        continue
+
+                adjuntos_correo = []
+                for part in msg.walk():
+                    if part.get_content_maintype() == "multipart":
+                        continue
+                    if part.get("Content-Disposition") is None:
+                        continue
+
+                    nombre_archivo = part.get_filename()
+                    if not nombre_archivo:
+                        continue
+                    nombre_archivo = _decodificar_cabecera(nombre_archivo)
+
+                    ext = Path(nombre_archivo).suffix.lower()
+                    if ext not in (".xml", ".pdf"):
+                        continue
+
+                    payload = part.get_payload(decode=True)
+                    if not payload:
+                        continue
+
+                    destino = carpeta_destino / nombre_archivo
+                    contador = 1
+                    while destino.exists():
+                        base = Path(nombre_archivo).stem
+                        destino = carpeta_destino / f"{base}_{contador}{ext}"
+                        contador += 1
+
+                    with open(destino, "wb") as f:
+                        f.write(payload)
+
+                    adjuntos_correo.append(destino)
+                    descargados.append(destino)
+                    log(f"  Adjunto: {destino.name}")
+
+                    if qvet_detectado:
+                        qvet_por_archivo[destino.name] = qvet_detectado
+                    if no_factura_detectado:
+                        no_factura_por_archivo[destino.name] = no_factura_detectado
+
+                    if message_id:
+                        archivos_por_correo.setdefault(message_id, []).append(str(destino))
+
+                if adjuntos_correo:
+                    info["procesados"] += 1
+                    if message_id:
+                        ids_procesados_esta_vez.add(message_id)
+
+                    if solo_no_leidos:
+                        mail.store(num, "+FLAGS", "\\Seen")
+
+            except Exception as e:
+                errores.append(f"Correo {num}: {e}")
+                log(f"Error: {e}")
+
+        if cancelado:
+            progreso(f"Cancelado. {len(descargados)} archivos obtenidos.")
+        else:
+            progreso(f"Descarga completa. {len(descargados)} archivos obtenidos.")
+
+        try:
+            mail.close()
+        except Exception:
+            pass
+        mail.logout()
+
+        if usar_cache and ids_procesados_esta_vez:
+            cache_ids.update(ids_procesados_esta_vez)
+            guardar_cache_correos(cache_ids)
+
+    except imaplib.IMAP4.error as e:
+        errores.append(f"Error IMAP: {e}")
+        log(f"Error IMAP: {e}")
+    except Exception as e:
+        errores.append(f"Error: {e}")
+        log(f"Error: {e}")
+    finally:
+        try:
+            archivo_log.close()
+        except Exception:
+            pass
+
+    info["qvet_por_archivo"] = qvet_por_archivo
+    info["no_factura_por_archivo"] = no_factura_por_archivo
+    info["archivos_por_correo"] = archivos_por_correo
+    return descargados, errores, info

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Permisos por IP{% endblock %}
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title mb-0">
+                Permisos por IP
+                <span class="text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
+                    Tu IP actual: <strong>{{ ip_actual }}</strong>
+                </span>
+            </h2>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+        <div class="btn-list">
+            <h4
+                class="card-title mb-0">
+                IPs configuradas
+                <span
+                    class="text-secondary fw-normal"
+                    style="font-size: .85rem; margin-left: .75rem;">
+                    Si una IP no está en esta lista y <code>default_deny</code> está activo,
+                    no podrá acceder a ningún módulo.
+                </span>
+            </h4>
+        </div>
+        
+        <div class="ms-auto btn-list">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="abrirModalNueva()">
+                ➕ Agregar IP
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="admin-ips-scroll">
+        <table class="table table-vcenter table-sm card-table table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>Equipo</th>
+                    <th>IP</th>
+                    <th>Módulos permitidos</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ip, entrada in cfg.ips.items() %}
+                <tr>
+                    <td>
+                        {% if entrada.nombre %}
+                            <strong>{{ entrada.nombre }}</strong>
+                        {% else %}
+                            <span class="text-secondary small">— sin nombre —</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <code>{{ ip }}</code>
+                        {% if ip == ip_actual %}
+                        <span class="badge bg-blue text-white ms-1">tú</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if entrada.modulos %}
+                            {% for m in entrada.modulos %}
+                            <span class="badge bg-secondary text-white me-1">{{ m }}</span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="text-secondary small">— sin acceso —</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-list justify-content-end flex-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    onclick='editarIP({{ ip|tojson }}, {{ entrada.nombre|tojson }}, {{ entrada.modulos|tojson }})'>
+                                Editar
+                            </button>
+                            <form method="post" action="/admin/ips/eliminar"
+                                  style="display:inline"
+                                  onsubmit="return confirm('¿Eliminar la IP {{ ip }}?')">
+                                <input type="hidden" name="ip" value="{{ ip }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-secondary py-3">
+                        Sin IPs configuradas. Usa <strong>➕ Agregar IP</strong> para empezar.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ============================================================
+     MODAL: Agregar / editar IP
+     ============================================================ -->
+<dialog id="modal-ip">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title" id="modal-ip-titulo">Agregar IP</h5>
+            <button type="button" class="btn-close btn-sm" onclick="cerrarModal()"></button>
+        </div>
+        <form method="post" action="/admin/ips/guardar">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Dirección IP</label>
+                    <input type="text" name="ip" id="input-ip" class="form-control"
+                           required placeholder="192.168.1.30">
+                    <small class="text-secondary">
+                        Si la IP ya existe, se sobreescriben sus datos.
+                    </small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre del equipo</label>
+                    <input type="text" name="nombre" id="input-nombre" class="form-control"
+                           placeholder="Recepción, Administración, etc.">
+                    <small class="text-secondary">Opcional, solo para identificarla.</small>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label d-block">Módulos permitidos</label>
+                    {% for m in cfg.modulos %}
+                    <label class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox"
+                               name="modulos" value="{{ m }}" id="mod-{{ m }}">
+                        <span class="form-check-label">{{ m|capitalize }}</span>
+                    </label>
+                    {% endfor %}
+                    <div class="form-text">
+                        Si no marcas ninguno, la IP queda sin acceso (útil para bloquear una IP).
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<script>
+const modal = document.getElementById('modal-ip');
+const titulo = document.getElementById('modal-ip-titulo');
+const inputIP = document.getElementById('input-ip');
+const inputNombre = document.getElementById('input-nombre');
+
+function _limpiarFormulario() {
+    inputIP.value = '';
+    inputNombre.value = '';
+    document.querySelectorAll('input[name="modulos"]').forEach(c => c.checked = false);
+}
+
+function abrirModalNueva() {
+    _limpiarFormulario();
+    titulo.textContent = 'Agregar IP';
+    modal.showModal();
+    setTimeout(() => inputIP.focus(), 50);
+}
+
+function editarIP(ip, nombre, mods) {
+    _limpiarFormulario();
+    titulo.textContent = 'Editar IP';
+    inputIP.value = ip;
+    inputNombre.value = nombre || '';
+    (mods || []).forEach(m => {
+        const el = document.getElementById('mod-' + m);
+        if (el) el.checked = true;
+    });
+    modal.showModal();
+    setTimeout(() => inputIP.focus(), 50);
+}
+
+function cerrarModal() {
+    modal.close();
+}
+
+// Cerrar con Escape: <dialog> ya lo hace nativo, no hace falta manejarlo
+</script>
+{% endblock %}

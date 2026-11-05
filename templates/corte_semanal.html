@@ -1,0 +1,1011 @@
+{% extends "base.html" %}
+{% block title %}Corte Semanal{% endblock %}
+{% block content %}
+<div class="page-header mb-3">
+  <div class="row align-items-center">
+    <div class="col">
+      <h2 class="page-title">
+        Corte Semanal
+        <span class="text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
+            Sem del {{ rango_legible }}.
+        </span>
+        <span
+          id="estado-badge"
+          style="font-size: .85rem; margin-left: .75rem;"
+          class="badge {% if meta.estado == 'cerrada' %}bg-secondary-lt text-secondary{% else %}bg-success-lt text-success{% endif %}">
+          {% if meta.estado == 'cerrada' %}🔐 Cerrada{% else %}🔓 Abierta{% endif %}
+        </span>
+      </h2>
+    </div>
+  </div>
+</div>
+
+<!-- Barra de herramientas -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+    <div class="btn-list">
+      <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+          {# Botón principal: depende del estado #}
+          {% if meta.estado == 'cerrada' %}
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-reabrir-semana">
+              🔓 Reabrir semana
+            </button>
+            <span class="vr mx-2"></span>
+            <a
+              href="/corte_semanal/excel?anio={{ anio }}&semana={{ semana }}"
+              class="btn btn-outline-success btn-sm">
+              📊 Exportar Excel
+            </a>
+          {% else %}
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-cerrar-semana">
+              🔒 Cerrar semana
+            </button>
+          {% endif %}
+          <button
+            type="button" class="btn btn-outline-secondary btn-sm"
+            onclick="abrirModalReportes()">
+            📋 Ver registros
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    {# Navegación de semanasMenú #}
+    <div class="ms-auto btn-list">
+      <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-sm btn-ghost-secondary"
+          href="/corte_semanal?anio={{ anio }}&semana={{ semana - 1 if semana > 1 else 52 }}">
+          ⬅️
+        </a>
+        <input type="week" id="semana-picker" class="form-control form-control-sm"
+              value="{{ '%04d-W%02d' % (anio, semana) }}" style="width:180px">
+        <a class="btn btn-sm btn-ghost-secondary"
+          href="/corte_semanal?anio={{ anio }}&semana={{ semana + 1 if semana < 53 else 1 }}">
+          ➡️
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Resumen de la sucursal activa -->
+<div id="resumen" class="mt-3 mb-3">
+  <div class="card">
+    <div class="card-header py-2 d-flex align-items-center">
+      <h3 class="card-title m-0" style="font-size: 1rem;">
+        Resumen · <span id="resumen-sucursal-nombre">Baalak</span>
+      </h3>
+    </div>
+    <div class="card-body py-2">
+      <div class="row row-cards">
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">💵 Ingresos</div>
+          <div class="h3 m-0" id="res-ingreso">$0.00</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">💸 Egresos</div>
+          <div class="h3 m-0" id="res-egreso">$0.00</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">📊 Utilidad</div>
+          <div class="h3 m-0 text-success" id="res-utilidad">$0.00</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">📥 Por cobrar</div>
+          <div class="h3 m-0 text-warning" id="res-porcobrar">$0.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs de sucursal -->
+<div class="card">
+  <div class="card-header p-0">
+    <ul class="nav nav-tabs" role="tablist" id="tabs-sucursal">
+      {% for s in sucursales %}
+        <li class="nav-item">
+          <a class="nav-link {% if loop.first %}active{% endif %}"
+            data-sucursal="{{ s }}" href="#">{{ s }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+    {% set DIAS_NOMBRE = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'] %}
+
+    {% for s in sucursales %}
+    <div class="tabla-sucursal {% if not loop.first %}d-none{% endif %}" data-sucursal="{{ s }}">
+
+      <!-- Sub-tabs de bloque -->
+      <ul class="nav nav-tabs nav-tabs-sub mt-0" id="subtabs-{{ s }}">
+        <li class="nav-item"><a class="nav-link active" data-bloque="ingresos" href="#">💰 Ingresos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bloque="egresos" href="#">💸 Egresos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bloque="porcobrar" href="#">📥 Por cobrar</a></li>
+        <li class="nav-item"><a class="nav-link" data-bloque="observaciones" href="#">📝 Observaciones</a></li>
+      </ul>
+
+      <!-- ================= INGRESOS ================= -->
+      <div class="bloque" data-bloque="ingresos" data-sucursal="{{ s }}">
+        <div class="corte-tabla-wrap">
+          <table class="table table-sm corte-tabla corte-excel">
+            <thead>
+              <tr>
+                <th class="corte-concepto-col">Concepto</th>
+                {% for i in range(7) %}
+                  <th class="text-end">{{ DIAS_NOMBRE[i] }}<br><span class="text-muted small">{{ dias[i][5:] }}</span></th>
+                {% endfor %}
+                <th class="text-end corte-total-semanal">Total semanal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for campo, etiqueta, es_calc in [
+                  ('efectivo_depositado','Efectivo depositado a caja fuerte', False),
+                  ('efectivo_cobrado','Efectivo cobrado', True),
+                  ('tarjeta_debito','Tarjeta de débito', False),
+                  ('tarjeta_credito','Tarjeta de crédito', False),
+                  ('transferencia','Transferencia', False)
+              ] %}
+              <tr data-campo="{{ campo }}">
+                <td class="corte-concepto-col">{{ etiqueta }}{% if es_calc %} 🔒{% endif %}</td>
+                {% for i in range(7) %}
+                  {% if es_calc %}
+                    <td class="text-end">
+                      <span class="corte-total calculada" data-campo="{{ campo }}">$0.00</span>
+                    </td>
+                  {% else %}
+                    <td class="text-end corte-celda-td"
+                        data-fecha="{{ dias[i] }}" data-sucursal="{{ s }}" data-campo="{{ campo }}"
+                        title="Doble clic para editar">
+                      <span class="corte-valor">$0.00</span>
+                    </td>
+                  {% endif %}
+                {% endfor %}
+                <td class="text-end corte-total-semanal">
+                  <span class="corte-total calculada" data-semanal-sucursal="{{ s }}" data-campo="{{ campo }}">$0.00</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr data-campo="__total_ingreso__" class="fila-total">
+                <td class="corte-concepto-col">Total $</td>
+                {% for i in range(7) %}
+                  <td class="text-end">
+                    <span class="corte-total calculada" data-campo="__total_ingreso__">$0.00</span>
+                  </td>
+                {% endfor %}
+                <td class="text-end corte-total-semanal">
+                  <span class="corte-total calculada" data-semanal-sucursal="{{ s }}" data-campo="__total_ingreso__">$0.00</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================= EGRESOS ================= -->
+      <div class="bloque d-none" data-bloque="egresos" data-sucursal="{{ s }}">
+        <div class="corte-tabla-wrap">
+          <table class="table table-sm corte-tabla corte-excel">
+            <thead>
+              <tr>
+                <th class="corte-concepto-col">Concepto</th>
+                {% for i in range(7) %}
+                  <th class="text-end">{{ DIAS_NOMBRE[i] }}<br><span class="text-muted small">{{ dias[i][5:] }}</span></th>
+                {% endfor %}
+                <th class="text-end corte-total-semanal">Total semanal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for campo, etiqueta in [
+                  ('nomina_efectivo','Nómina efectivo'),
+                  ('gasolina','Gasolina'),
+                  ('hemograma','Hemograma'),
+                  ('patologia','Patología'),
+                  ('varios','Varios / Diversos'),
+                  ('servicios','Servicios'),
+                  ('capacitacion','Capacitación')
+              ] %}
+              <tr data-campo="{{ campo }}">
+                <td class="corte-concepto-col">{{ etiqueta }}</td>
+                {% for i in range(7) %}
+                  <td class="text-end corte-celda-td"
+                      data-fecha="{{ dias[i] }}" data-sucursal="{{ s }}" data-campo="{{ campo }}"
+                      title="Doble clic para editar">
+                    <span class="corte-valor">$0.00</span>
+                  </td>
+                {% endfor %}
+                <td class="text-end corte-total-semanal">
+                  <span class="corte-total calculada" data-semanal-sucursal="{{ s }}" data-campo="{{ campo }}">$0.00</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr data-campo="__total_egreso__" class="fila-total">
+                <td class="corte-concepto-col">Total $</td>
+                {% for i in range(7) %}
+                  <td class="text-end">
+                    <span class="corte-total calculada" data-campo="__total_egreso__">$0.00</span>
+                  </td>
+                {% endfor %}
+                <td class="text-end corte-total-semanal">
+                  <span class="corte-total calculada" data-semanal-sucursal="{{ s }}" data-campo="__total_egreso__">$0.00</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================= POR COBRAR ================= -->
+      <div class="bloque d-none" data-bloque="porcobrar" data-sucursal="{{ s }}">
+        <div class="corte-tabla-wrap">
+          <table class="table table-sm corte-tabla corte-excel">
+            <thead>
+              <tr>
+                <th class="corte-concepto-col">Concepto</th>
+                {% for i in range(7) %}
+                  <th class="text-end">{{ DIAS_NOMBRE[i] }}<br><span class="text-muted small">{{ dias[i][5:] }}</span></th>
+                {% endfor %}
+                <th class="text-end corte-total-semanal">Total semanal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for k in por_cobrar_keys %}
+              <tr data-campo="{{ k }}">
+                <td class="corte-concepto-col text-capitalize">{{ k.replace('_',' ') }}</td>
+                {% for i in range(7) %}
+                  <td class="text-end corte-celda-td"
+                      data-fecha="{{ dias[i] }}" data-sucursal="{{ s }}"
+                      data-campo="por_cobrar" data-subcampo="{{ k }}"
+                      title="Doble clic para editar">
+                    <span class="corte-valor">$0.00</span>
+                  </td>
+                {% endfor %}
+                <td class="text-end corte-total-semanal">
+                  <span class="corte-total calculada" data-semanal-sucursal="{{ s }}" data-campo="{{ k }}">$0.00</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr data-campo="__total_pc__" class="fila-total">
+                <td class="corte-concepto-col">Total $</td>
+                {% for i in range(7) %}
+                  <td class="text-end">
+                    <span class="corte-total calculada" data-campo="__total_pc__">$0.00</span>
+                  </td>
+                {% endfor %}
+                <td class="text-end corte-total-semanal">
+                  <span class="corte-total calculada" data-semanal-sucursal="{{ s }}" data-campo="__total_pc__">$0.00</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================= OBSERVACIONES ================= -->
+      <div class="bloque d-none" data-bloque="observaciones" data-sucursal="{{ s }}">
+        <div class="table-responsive">
+          <table class="table table-sm corte-tabla corte-excel">
+            <tbody>
+              {% for i in range(7) %}
+              <tr>
+                <td class="corte-concepto-col" style="width:150px">{{ DIAS_NOMBRE[i] }} {{ dias[i][5:] }}</td>
+                <td>
+                  <input type="text" class="corte-obs"
+                        data-fecha="{{ dias[i] }}" data-sucursal="{{ s }}" data-campo="observaciones"
+                        placeholder="Sin observaciones">
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  
+</div>
+<div id="toast" class="toast-pos d-none"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.CORTE = {
+  anio: {{ anio }},
+  semana: {{ semana }},
+  estado: "{{ meta.estado }}",
+  dias: {{ dias | tojson }},
+  sucursales: {{ sucursales | tojson }},
+  porCobrarKeys: {{ por_cobrar_keys | tojson }},
+};
+
+(function () {
+  const { anio, semana, estado, dias, sucursales, porCobrarKeys } = window.CORTE;
+  const DEBOUNCE = 400;
+  const timers = {};
+  const bloqueada = estado === 'cerrada';
+  let sucursalActiva = sucursales[0];   // Baalak por defecto
+
+  const fmt = (v) => {
+    const n = Number(v) || 0;
+    return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const parseMonto = (s) => {
+    if (!s) return 0;
+    return Number(String(s).replace(/[$,]/g, '')) || 0;
+  };
+  const evalExpr = (s) => {
+    if (!s) return 0;
+    const limpio = String(s).replace(/\$/g, '').replace(/\s/g, '').replace(/,/g, '.');
+    let total = 0, signo = 1, i = 0;
+    while (i < limpio.length) {
+      const c = limpio[i];
+      if (c === '+') { signo = 1; i++; continue; }
+      if (c === '-') { signo = -1; i++; continue; }
+      let num = '';
+      while (i < limpio.length && /[0-9.]/.test(limpio[i])) { num += limpio[i]; i++; }
+      if (num) { total += signo * (parseFloat(num) || 0); signo = 1; }
+      else { i++; }
+    }
+    return Math.round(total * 100) / 100;
+  };
+
+  // -------- Estado de la celda que se está editando en el modal --------
+  let celdaActiva = null;   // { inp, fecha, sucursal, campo, subcampo }
+
+  async function cargar() {
+    const r = await fetch(`/corte_semanal/datos?anio=${anio}&semana=${semana}`, { cache: 'no-store' });
+    const data = await r.json();
+    window.__corteData = data;
+    pintar(data);
+  }
+
+  function pintar(data) {
+    for (const s of sucursales) {
+      const cont = document.querySelector(`.tabla-sucursal[data-sucursal="${s}"]`);
+      if (!cont) continue;
+
+      for (const f of dias) {
+        const d = data.datos?.[s]?.[f];
+        if (!d) continue;
+
+        cont.querySelectorAll(`td[data-fecha="${f}"][data-sucursal="${s}"].corte-celda-td`)
+          .forEach((td) => {
+            const campo = td.dataset.campo;
+            const sub = td.dataset.subcampo;
+            let valorStr = '';
+            if (campo === 'por_cobrar' && sub) valorStr = d.por_cobrar?.[sub] || '';
+            else valorStr = d[campo] || '';
+            td.dataset.raw = valorStr;
+            // La celda solo muestra el total calculado
+            const span = td.querySelector('.corte-valor');
+            if (span) span.textContent = fmt(evalExpr(valorStr));
+          });
+
+        const obs = cont.querySelector(`input.corte-obs[data-fecha="${f}"][data-sucursal="${s}"]`);
+        if (obs && document.activeElement !== obs) obs.value = d.observaciones || '';
+      }
+    }
+    pintarTodo(data);
+  }
+
+  function actualizarResumenSucursal(data) {
+    const s = sucursalActiva;
+    const tot = data.totales?.por_sucursal?.[s];
+    if (!tot) return;
+
+    // Nombre de la sucursal en el header del card
+    const nombreEl = document.getElementById('resumen-sucursal-nombre');
+    if (nombreEl) nombreEl.textContent = s;
+
+    // 4 tarjetas
+    const set = (id, valor) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = fmt(valor);
+    };
+    set('res-ingreso',   tot.ingreso);
+    set('res-egreso',    tot.egreso);
+    set('res-utilidad',  tot.utilidad);
+    set('res-porcobrar', tot.por_cobrar);
+  }
+
+  function pintarTodo(data) {
+    for (const s of sucursales) {
+      const cont = document.querySelector(`.tabla-sucursal[data-sucursal="${s}"]`);
+      if (!cont) continue;
+      const tot = data.totales.por_sucursal[s];
+      if (!tot) continue;
+
+      // Fila calculada: Efectivo cobrado = depositado + egresos
+      const filaCobrado = cont.querySelector('tr[data-campo="efectivo_cobrado"]');
+      if (filaCobrado) {
+        const tds = filaCobrado.querySelectorAll('td.text-end');
+        dias.forEach((f, idx) => {
+          const d = data.datos?.[s]?.[f];
+          if (!d) return;
+          const td = tds[idx];
+          if (!td) return;
+          const span = td.querySelector('.corte-total.calculada');
+          if (!span) return;
+          const dep = parseMonto(d._totales?.efectivo_depositado);
+          const egr = ['nomina_efectivo','gasolina','hemograma','patologia','varios','servicios','capacitacion']
+            .reduce((a, k) => a + parseMonto(d._totales?.[k]), 0);
+          span.textContent = fmt(dep + egr);
+        });
+      }
+
+      // Fila de totales del tfoot
+      for (const key of ['__total_ingreso__', '__total_egreso__', '__total_pc__']) {
+        const fila = cont.querySelector(`tfoot tr[data-campo="${key}"]`);
+        if (!fila) continue;
+        const tds = fila.querySelectorAll('td.text-end');
+        dias.forEach((f, idx) => {
+          const d = data.datos?.[s]?.[f];
+          if (!d) return;
+          const td = tds[idx];
+          if (!td) return;
+          const span = td.querySelector('.corte-total');
+          if (!span) return;
+          let valor = 0;
+          if (key === '__total_ingreso__') {
+            valor = parseMonto(d._totales?.efectivo_cobrado)
+                  + parseMonto(d._totales?.tarjeta_debito)
+                  + parseMonto(d._totales?.tarjeta_credito)
+                  + parseMonto(d._totales?.transferencia);
+          } else if (key === '__total_egreso__') {
+            valor = ['nomina_efectivo','gasolina','hemograma','patologia','varios','servicios','capacitacion']
+              .reduce((a, k) => a + parseMonto(d._totales?.[k]), 0);
+          } else {
+            valor = Object.entries(d._totales || {})
+              .filter(([k]) => !['efectivo_depositado','efectivo_cobrado','tarjeta_debito','tarjeta_credito','transferencia','nomina_efectivo','gasolina','hemograma','patologia','varios','servicios','capacitacion'].includes(k))
+              .reduce((a, [, v]) => a + parseMonto(v), 0);
+          }
+          span.textContent = fmt(valor);
+        });
+      }
+
+      // Total semanal por concepto
+      const conceptosIngreso = ['efectivo_depositado','efectivo_cobrado','tarjeta_debito','tarjeta_credito','transferencia','__total_ingreso__'];
+      const conceptosEgreso  = ['nomina_efectivo','gasolina','hemograma','patologia','varios','servicios','capacitacion','__total_egreso__'];
+      const conceptosPC      = [...porCobrarKeys, '__total_pc__'];
+
+      const ponerSemanal = (campo) => {
+        const fila = cont.querySelector(`tr[data-campo="${campo}"]`);
+        if (!fila) return;
+        const span = fila.querySelector(`.corte-total-semanal .corte-total[data-semanal-sucursal="${s}"]`);
+        if (!span) return;
+        let val = 0;
+        if (campo === '__total_ingreso__') val = tot.ingreso;
+        else if (campo === '__total_egreso__') val = tot.egreso;
+        else if (campo === '__total_pc__') val = tot.por_cobrar;
+        else if (tot.conceptos[campo] !== undefined) val = tot.conceptos[campo];
+        span.textContent = fmt(val);
+      };
+      [...conceptosIngreso, ...conceptosEgreso, ...conceptosPC].forEach(ponerSemanal);
+    }
+
+    actualizarResumenSucursal(data);
+  }
+
+  function guardarRaw({ fecha, sucursal, campo, subcampo, valor }) {
+    const payload = { fecha, sucursal, campo, valor };
+    if (subcampo) payload.subcampo = subcampo;
+
+    return fetch('/corte_semanal/actualizar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(async (r) => {
+        if (r.status === 409) {
+          mostrarToast('Semana cerrada, no se puede editar', 'error');
+          cargar();
+          return null;
+        }
+        if (!r.ok) {
+          mostrarToast('Error al guardar', 'error');
+          return null;
+        }
+        const data = await r.json();
+
+        if (data.datos && data.totales) {
+          window.__corteData = data;      // ← guardar para el tab switch
+          pintarTodo(data);               // ← repintar todo
+        } else {
+          cargar();                       // ← fallback si el backend no devolvió datos
+        }
+        return data;
+      })
+      .catch((err) => {
+        console.error('[corte] error al guardar:', err);
+        mostrarToast('Error al guardar — revisa consola', 'error');
+        return null;
+      });
+  }
+
+  function mostrarToast(msg, tipo = 'ok') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast-pos ' + tipo;
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.add('d-none'), 2500);
+    t.classList.remove('d-none');
+  }
+
+  // -------- Celdas: doble clic abre modal, Enter baja, Escape sale --------
+  document.querySelectorAll('td.corte-celda-td').forEach(td => {
+    if (bloqueada) {
+      td.classList.add('bloqueada');
+      return;
+    }
+
+    // Doble clic → modal
+    td.addEventListener('dblclick', () => {
+      abrirModal(td);
+    });
+
+    // Enter / Shift+Enter / Escape en la celda (sin abrir modal)
+    td.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        navegarVertical(td, e.shiftKey ? -1 : +1);
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        td.blur();
+      }
+    });
+
+    // Hacer la celda enfocable para capturar keydown
+    td.tabIndex = 0;
+
+    // Enter sobre la celda con foco también abre el modal (por comodidad)
+    // (opcional, se puede quitar si solo quieres doble clic)
+    // td.addEventListener('keydown', (e) => { if (e.key === 'F2') abrirModal(td); });
+  });
+
+  // Navegación vertical: baja/sube a la celda del mismo campo, día siguiente/anterior
+  function navegarVertical(td, dir) {
+    const fila = td.closest('tr');
+    const tabla = td.closest('table');
+    const celdasFila = Array.from(fila.querySelectorAll('td.corte-celda-td'));
+    const idx = celdasFila.indexOf(td);
+
+    if (dir > 0) {
+      // Bajar: primera celda de la siguiente fila editable
+      let filaSig = fila.nextElementSibling;
+      while (filaSig) {
+        const celda = filaSig.querySelector('td.corte-celda-td');
+        if (celda) { celda.focus(); return; }
+        filaSig = filaSig.nextElementSibling;
+      }
+      // Si no hay siguiente fila editable en esta tabla, buscar en la siguiente tabla
+      let tablaSig = tabla.parentElement.nextElementSibling;
+      while (tablaSig) {
+        const t = tablaSig.querySelector('table');
+        if (t) {
+          const primera = t.querySelector('td.corte-celda-td');
+          if (primera) { primera.focus(); return; }
+        }
+        tablaSig = tablaSig.nextElementSibling;
+      }
+    } else {
+      // Subir: última celda de la fila anterior editable, o salir
+      let filaAnt = fila.previousElementSibling;
+      while (filaAnt) {
+        const celdas = filaAnt.querySelectorAll('td.corte-celda-td');
+        if (celdas.length) { celdas[celdas.length - 1].focus(); return; }
+        filaAnt = filaAnt.previousElementSibling;
+      }
+    }
+    td.blur();
+  }
+
+  function abrirModal(td) {
+    if (bloqueada) return;
+    const fecha = td.dataset.fecha;
+    const sucursal = td.dataset.sucursal;
+    const campo = td.dataset.campo;
+    const subcampo = td.dataset.subcampo || null;
+
+    celdaActiva = { td, fecha, sucursal, campo, subcampo };
+
+    // ⚠️ Capturar los elementos AQUÍ, no al inicio del IIFE
+    const modal       = document.getElementById('modal-celda');
+    const modalInput  = document.getElementById('modal-celda-input');
+    const modalTotal  = document.getElementById('modal-celda-total');
+    const modalTitulo = document.getElementById('modal-celda-titulo');
+    const modalAyuda  = document.getElementById('modal-celda-ayuda');
+
+    if (!modal) {
+      console.error('[corte] No existe #modal-celda');
+      return;
+    }
+
+    const dia = dias.indexOf(fecha);
+    const nombresDia = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+    const etiquetaConcepto =
+      td.closest('tr')?.querySelector('.corte-concepto-col')?.textContent.trim() || campo;
+
+    if (modalTitulo) {
+      modalTitulo.textContent =
+        `${nombresDia[dia] || fecha} ${fecha.slice(5)} · ${sucursal} · ${etiquetaConcepto}`;
+    }
+    if (modalInput) modalInput.value = td.dataset.raw || '';
+    if (modalAyuda) {
+      modalAyuda.textContent =
+        'Puedes escribir una operación, por ejemplo 2345+679. El total se calcula solo.';
+    }
+    if (modalTotal && modalInput) {
+      modalTotal.textContent = fmt(evalExpr(modalInput.value));
+    }
+
+    modal.showModal();
+    setTimeout(() => { modalInput?.focus(); modalInput?.select(); }, 30);
+
+    // Enganchar listeners del input y botones (idempotente: se re-enganchan cada vez, sin acumular)
+    modalInput?.addEventListener('input', () => {
+      if (modalTotal) modalTotal.textContent = fmt(evalExpr(modalInput.value));
+    }, { once: false });
+
+    // Nota: para evitar listeners duplicados, usamos onX en vez de addEventListener
+    modalInput.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); aplicarModal(); }
+      if (e.key === 'Escape') { e.preventDefault(); cerrarModal(); }
+    };
+    document.getElementById('modal-celda-ok').onclick = aplicarModal;
+    document.getElementById('modal-celda-cerrar-x').onclick = cerrarModal;
+  }
+
+  function actualizarTotalModal() {
+    const v = modalInput.value;
+    modalTotal.textContent = fmt(evalExpr(v));
+  }
+
+  function aplicarModal() {
+    if (!celdaActiva) return;
+    const { td, fecha, sucursal, campo, subcampo } = celdaActiva;
+    const modalInput = document.getElementById('modal-celda-input');
+    const valor = (modalInput?.value || '').trim();
+
+    td.dataset.raw = valor;
+    const span = td.querySelector('.corte-valor');
+    if (span) span.textContent = fmt(evalExpr(valor));
+
+    guardarRaw({ fecha, sucursal, campo, subcampo, valor }).then(() => {
+      navegarVertical(td, +1);
+    });
+
+    cerrarModal();
+  }
+
+  function cerrarModal() {
+    const modal = document.getElementById('modal-celda');
+    modal?.close();
+    celdaActiva = null;
+  }
+
+  // -------- Observaciones --------
+  document.querySelectorAll('input.corte-obs').forEach(inp => {
+    if (bloqueada) {
+      inp.readOnly = true;
+      inp.classList.add('bloqueada');
+      return;
+    }
+    inp.addEventListener('focus', () => { inp.dataset.original = inp.value; });
+    inp.addEventListener('input', () => {
+      const key = `obs|${inp.dataset.fecha}|${inp.dataset.sucursal}`;
+      clearTimeout(timers[key]);
+      timers[key] = setTimeout(() => {
+        const data = { fecha: inp.dataset.fecha, sucursal: inp.dataset.sucursal, campo: 'observaciones', valor: inp.value };
+        guardarRaw(data);
+      }, DEBOUNCE);
+    });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const key = `obs|${inp.dataset.fecha}|${inp.dataset.sucursal}`;
+        clearTimeout(timers[key]);
+        const data = { fecha: inp.dataset.fecha, sucursal: inp.dataset.sucursal, campo: 'observaciones', valor: inp.value };
+        guardarRaw(data);
+        inp.blur();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (inp.dataset.original !== undefined) inp.value = inp.dataset.original;
+        inp.blur();
+      }
+    });
+  });
+
+  // -------- Tabs de sucursal --------
+  document.querySelectorAll('#tabs-sucursal .nav-link').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('#tabs-sucursal .nav-link').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.tabla-sucursal').forEach(c => c.classList.add('d-none'));
+      document.querySelector(`.tabla-sucursal[data-sucursal="${tab.dataset.sucursal}"]`)?.classList.remove('d-none');
+
+      // Actualizar sucursal activa y repintar resumen
+      sucursalActiva = tab.dataset.sucursal;
+      // Volver a pedir los datos para pintar el resumen con los totales correctos
+      // (o reutilizar `ultimaData` si lo guardas)
+      if (window.__corteData) {
+        actualizarResumenSucursal(window.__corteData);
+      }
+    });
+  });
+
+  // -------- Sub-tabs de bloque --------
+  sucursales.forEach(s => {
+    const cont = document.querySelector(`.tabla-sucursal[data-sucursal="${s}"]`);
+    if (!cont) return;
+    cont.querySelectorAll(`#subtabs-${s} .nav-link`).forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        cont.querySelectorAll(`#subtabs-${s} .nav-link`).forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        cont.querySelectorAll('.bloque').forEach(b => b.classList.add('d-none'));
+        cont.querySelector(`.bloque[data-bloque="${tab.dataset.bloque}"]`)?.classList.remove('d-none');
+      });
+    });
+  });
+
+  // -------- Selector de semana --------
+  document.getElementById('semana-picker')?.addEventListener('change', (e) => {
+    const [a, s] = e.target.value.split('-W');
+    window.location = `/corte_semanal?anio=${a}&semana=${parseInt(s, 10)}`;
+  });
+
+  // -------- Cerrar semana --------
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#btn-cerrar-semana');
+    if (!btn) return;
+    const modal = document.getElementById('modal-cerrar');
+    if (!modal) {
+      console.error('[corte] No existe #modal-cerrar');
+      return;
+    }
+    modal.showModal();
+  });
+
+  // Botones del modal de cerrar (también por delegación, por si el <dialog> aparece después)
+  document.addEventListener('click', async (e) => {
+    // Cerrar el modal (X, Cancelar)
+    if (e.target.closest('#modal-cerrar-x') || e.target.closest('#modal-cerrar-cancelar')) {
+      document.getElementById('modal-cerrar')?.close();
+      return;
+    }
+
+    // Confirmar cierre
+    const btnOk = e.target.closest('#modal-cerrar-ok');
+    if (btnOk) {
+      btnOk.disabled = true;
+      btnOk.textContent = 'Cerrando...';
+      try {
+        const r = await fetch('/corte_semanal/cerrar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ anio, semana }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          mostrarToast(err.detail || 'Error al cerrar la semana', 'error');
+          btnOk.disabled = false;
+          btnOk.textContent = 'Cerrar y generar Excel';
+          return;
+        }
+        document.getElementById('modal-cerrar')?.close();
+        mostrarToast('✅ Semana cerrada. Excel guardado.', 'ok');
+        setTimeout(() => window.location.reload(), 800);
+      } catch (err) {
+        console.error('[corte] error cerrando:', err);
+        mostrarToast('Error al cerrar la semana', 'error');
+        btnOk.disabled = false;
+        btnOk.textContent = 'Cerrar y generar Excel';
+      }
+    }
+  });
+
+  // -------- Reabrir semana --------
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#btn-reabrir-semana');
+    if (!btn) return;
+
+    const ok1 = confirm('¿Reabrir esta semana? Se borrará el Excel guardado y la semana volverá a ser editable.');
+    if (!ok1) return;
+    const ok2 = confirm('¿Seguro? Esta acción no se puede deshacer.');
+    if (!ok2) return;
+
+    try {
+      const r = await fetch('/corte_semanal/reabrir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anio, semana }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        mostrarToast(err.detail || 'Error al reabrir', 'error');
+        return;
+      }
+      mostrarToast('✅ Semana reabierta', 'ok');
+      setTimeout(() => window.location.reload(), 600);
+    } catch (err) {
+      console.error('[corte] error reabriendo:', err);
+      mostrarToast('Error al reabrir la semana', 'error');
+    }
+  });
+
+  // ============================================================
+  // Modal de Reportes de Corte
+  // ============================================================
+  const MESES_ES_CORTE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                          'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  async function abrirModalReportes() {
+    const modal = document.getElementById('modal-reportes-corte');
+    const cont = document.getElementById('arbol-corte');
+    const resumen = document.getElementById('arbol-corte-resumen');
+
+    modal.showModal();
+    cont.innerHTML = '<div class="text-muted text-center py-4">Cargando...</div>';
+    resumen.textContent = '';
+
+    try {
+      const resp = await fetch('/corte_semanal/arbol', { cache: 'no-store' });
+      const data = await resp.json();
+      const anios = Object.keys(data).filter(k => k !== '_total');
+      if (anios.length === 0) {
+        cont.innerHTML = '<div class="text-muted text-center py-4">No hay registros de Corte aún.</div>';
+        return;
+      }
+      cont.innerHTML = '';
+      const ul = document.createElement('ul');
+      ul.className = 'arbol-reportes';
+      anios.sort().reverse().forEach(a => ul.appendChild(nodoAnioCorte(a, data[a])));
+      cont.appendChild(ul);
+
+      const tg = data._total || { n: 0, ingreso: 0, egreso: 0, utilidad: 0 };
+      resumen.textContent =
+        `Total general: ${tg.n} días · Ingresos $${fmt(tg.ingreso)} · ` +
+        `Egresos $${fmt(tg.egreso)} · Utilidad $${fmt(tg.utilidad)}`;
+    } catch (e) {
+      cont.innerHTML = `<div class="text-danger text-center py-4">Error: ${e.message}</div>`;
+    }
+  }
+
+  function nodoAnioCorte(anio, semanas) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const t = semanas._total || { n: 0, ingreso: 0, egreso: 0, utilidad: 0 };
+    sum.innerHTML = `<strong>📅 ${anio}</strong>
+      <span class="text-muted small ms-2">${t.n} días · $${fmt(t.utilidad)} utilidad</span>`;
+    det.appendChild(sum);
+
+    const ul = document.createElement('ul');
+    Object.keys(semanas).filter(k => k !== '_total').sort().reverse()
+      .forEach(s => ul.appendChild(nodoSemanaCorte(anio, s, semanas[s])));
+    det.appendChild(ul);
+    li.appendChild(det);
+    return li;
+  }
+
+  function nodoSemanaCorte(anio, semana, sucursales) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const t = sucursales._total || { n: 0, ingreso: 0, egreso: 0, utilidad: 0 };
+    sum.innerHTML = `<strong>📆 Sem ${parseInt(semana, 10)}</strong>
+      <span class="text-muted small ms-2">${t.n} días · $${fmt(t.utilidad)} utilidad</span>`;
+    det.appendChild(sum);
+
+    const ul = document.createElement('ul');
+    Object.keys(sucursales).filter(k => k !== '_total').sort()
+      .forEach(suc => ul.appendChild(nodoSucursalCorte(anio, semana, suc, sucursales[suc])));
+    det.appendChild(ul);
+    li.appendChild(det);
+    return li;
+  }
+
+  function nodoSucursalCorte(anio, semana, sucursal, info) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nodo-sucursal-btn';
+    const nombre = sucursal === '_sin_sucursal' ? 'Sin sucursal' : sucursal;
+    btn.innerHTML = `<strong>🏢 ${nombre}</strong>
+      <span class="text-muted small ms-2">
+        ${info.n} días · Ing $${fmt(info.ingreso)} · Egr $${fmt(info.egreso)} · Util $${fmt(info.utilidad)}
+      </span>`;
+    btn.title = `Ir a la semana ${semana} de ${anio} (sucursal ${nombre})`;
+    btn.addEventListener('click', () => {
+      document.getElementById('modal-reportes-corte').close();
+      window.location = `/corte_semanal?anio=${anio}&semana=${parseInt(semana, 10)}`;
+    });
+    li.appendChild(btn);
+    return li;
+  }
+
+  // Exponer para los onclick del HTML
+  window.abrirModalReportes = abrirModalReportes;
+  // -------- Init --------
+  cargar();
+})();
+</script>
+
+<!-- Modal de captura -->
+<dialog id="modal-celda" class="modal-propio-corte">
+  <form method="dialog" class="modal-content-corte" onsubmit="return false;">
+    <div class="modal-header">
+      <h5 class="modal-title" id="modal-celda-titulo">Editar celda</h5>
+      <button type="button" class="btn-close" id="modal-celda-cerrar-x" aria-label="Cerrar"></button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label">Cantidad u operación</label>
+      <input type="text" id="modal-celda-input" class="form-control form-control-lg"
+             inputmode="decimal" placeholder="0 o 2345+679" autocomplete="off">
+      <div class="form-text" id="modal-celda-ayuda"></div>
+      <div class="mt-3 text-end">
+        <span class="text-muted me-2">Total:</span>
+        <span id="modal-celda-total" class="h3 m-0 text-primary">$0.00</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary btn-sm" id="modal-celda-ok">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal corte -->
+<dialog id="modal-cerrar" class="modal-propio-corte">
+  <form method="dialog" class="modal-content-corte" onsubmit="return false;">
+    <div class="modal-header">
+      <h5 class="modal-title">Cerrar semana</h5>
+      <button type="button" class="btn-close" id="modal-cerrar-x" aria-label="Cerrar"></button>
+    </div>
+    <div class="modal-body">
+      <p class="mb-2">
+        Vas a cerrar la semana <strong>{{ rango_legible }}</strong>.
+      </p>
+      <div class="alert alert-warning mb-0">
+        ⚠️ Una vez cerrada, la semana queda bloqueada para edición.
+        El Excel se generará y guardará en el servidor.
+        <br>
+        Si te equivocas, puedes reabrirla desde <strong>🔓 Reabrir semana</strong>.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary btn-sm" id="modal-cerrar-ok">Cerrar y generar Excel</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="modal-reportes-corte" style="max-width: 760px; width: 92vw;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">📊 Semanas del Corte</h5>
+      <button type="button" class="btn-close btn-sm"
+              onclick="document.getElementById('modal-reportes-corte').close()"></button>
+    </div>
+    <div class="modal-body" style="max-height: 70vh; overflow: auto;">
+      <div id="arbol-corte">
+        <p class="text-muted small mb-2">
+          Clic en una <strong>sucursal</strong> para ir a esa semana.
+        </p>
+        <div class="text-muted text-center py-4">Cargando...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span class="text-muted small me-auto" id="arbol-corte-resumen"></span>
+    </div>
+  </div>
+</dialog>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">🩹 Rescatar factura rechazada</h2>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted mb-3">Confirma los datos. Se guardará como registro manual (sin productos).</p>
+
+<div class="card col-md-10 col-lg-8">
+    <div class="card-body">
+        <form method="post" action="/ingresos/rechazados/rescatar/{{ carpeta_rel }}/{{ nombre }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Fecha</label>
+                    <input type="date" name="fecha" class="form-control" required value="{{ prefill.fecha }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Folio</label>
+                    <input type="text" name="folio" class="form-control" value="{{ prefill.folio }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Sucursal</label>
+                    <select name="sucursal" class="form-select" required>
+                        <option value="Baalak" {% if 'S1' in prefill.notas %}selected{% endif %}>Baalak</option>
+                        <option value="Prado" {% if 'Prado' in prefill.notas or 'PRADOS' in prefill.notas %}selected{% endif %}>Prado</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Cliente</label>
+                    <input type="text" name="cliente" class="form-control" value="{{ prefill.cliente }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">RFC</label>
+                    <input type="text" name="rfc" class="form-control" value="{{ prefill.rfc }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Total</label>
+                    <input type="number" step="0.01" name="total" class="form-control" required value="{{ prefill.total }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Folio fiscal (UUID)</label>
+                    <input type="text" name="folio_fiscal" class="form-control" value="{{ prefill.folio_fiscal }}">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notas</label>
+                    <input type="text" name="notas" class="form-control" value="{{ prefill.notas }}">
+                </div>
+                <div class="col-12 d-flex justify-content-end gap-2 mt-4">
+                    <button type="submit" class="btn btn-success btn-sm">💾 Guardar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

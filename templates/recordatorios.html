@@ -1,0 +1,458 @@
+{% extends "base.html" %}
+{% block title %}Recordatorios{% endblock %}
+{% block content %}
+<!-- Header -->
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                Recordatorios
+                <span class="text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
+                    Sucursal activa: 
+                </span>
+                <span style="font-size: .85rem; margin-left: .75rem;"></span>
+                <div class="dropdown">
+                    <form method="post" action="/recordatorios/sucursal" id="form-sucursal">
+                        <select name="sucursal_id" id="select-sucursal" class="form-select form-select-sm"
+                                style="min-width: 240px; padding-right: 2.5rem;">
+                            {% for sid, s in sucursales.items() %}
+                                <option value="{{ sid }}" {% if sid == sucursal_activa_id %}selected{% endif %}>{{ s.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <noscript><button class="btn btn-sm btn-outline-primary mt-1" type="submit">Cambiar</button></noscript>
+                    </form>
+                </div>
+            </h2>
+        </div>
+    </div>
+</div>
+
+<!-- Barra de herramientas -->
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+        <div class="btn-list">
+            <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalImportar">
+                📊 Importar Excel
+            </button>
+            <a href="/recordatorios/excel" class="btn btn-outline-success btn-sm">📊 Exportar Excel</a>
+
+            <span class="vr mx-2"></span>
+
+            <button class="btn btn-outline-success btn-sm" id="btn-accion" disabled>
+                📱 Enviar
+            </button>
+        </div>
+
+        <div class="ms-auto btn-list">
+            <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalReset">
+                🧹 Reset
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-2 mb-3">
+    <div class="col-md-6">
+        <div class="card card-sm">
+            <div class="card-body">
+                <div class="text-secondary">📅 Citas</div>
+                <div class="h3 m-0">{{ stats.citas_total }}</div>
+                <small class="text-secondary">Enviados: {{ stats.citas_enviados }} | Pendientes: {{ stats.citas_total - stats.citas_enviados }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card card-sm">
+            <div class="card-body">
+                <div class="text-secondary">💉 Vacunas</div>
+                <div class="h3 m-0">{{ stats.vacunas_total }}</div>
+                <small class="text-secondary">Enviados: {{ stats.vacunas_enviados }} | Pendientes: {{ stats.vacunas_total - stats.vacunas_enviados }}</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="card">
+    <div class="card-header p-0">
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" id="tab-btn-citas" data-bs-toggle="tab"
+                        data-bs-target="#tab-citas" type="button" role="tab">
+                    📅 Citas ({{ citas|length }})
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="tab-btn-vacunas" data-bs-toggle="tab"
+                        data-bs-target="#tab-vacunas" type="button" role="tab">
+                    💉 Vacunas ({{ vacunas|length }})
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body p-0">
+        <div class="tab-content">
+
+            <!-- Tab Citas -->
+            <div class="tab-pane fade show active" id="tab-citas" role="tabpanel">
+                <div class="table-responsive" id="scroll-citas"
+                     style="max-height:calc(100vh - 260px);overflow:auto">
+                    <table class="table table-sm table-vcenter table-sticky-header tabla-sel" id="tabla-citas">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">✔</th>
+                                <th>Cliente</th>
+                                <th>Teléfono</th>
+                                <th>Mascotas</th>
+                                <th>Hora</th>
+                                <th>Asunto</th>
+                                <th>Agenda</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in citas %}
+                            {% set cita = c.citas[0] if c.citas else {} %}
+                            <tr data-tipo="citas" data-idx="{{ loop.index0 }}"
+                                data-enviado="{{ '1' if c.enviado else '0' }}"
+                                data-nombre="{{ c.nombre|e }}"
+                                data-mensaje="{{ c.mensaje_completo|e }}"
+                                class="{{ 'table-success' if c.enviado else '' }}">
+                                <td class="text-center">
+                                    <input type="radio" class="sel-row" name="sel-citas" value="{{ loop.index0 }}">
+                                    {{ '✅' if c.enviado else '⬜' }}
+                                </td>
+                                <td>{{ c.nombre }}</td>
+                                <td>{{ c.telefono_display }}</td>
+                                <td>{{ c.mascotas_txt }}</td>
+                                <td>{{ cita.hora or '' }}</td>
+                                <td>{{ cita.asunto or '' }}</td>
+                                <td>{{ cita.agenda or '' }}</td>
+                                <td>{{ cita.estado or '' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="8" class="text-center text-secondary py-3">Sin clientes importados.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab Vacunas -->
+            <div class="tab-pane fade" id="tab-vacunas" role="tabpanel">
+                <div class="table-responsive" id="scroll-vacunas"
+                     style="max-height:calc(100vh - 260px);overflow:auto">
+                    <table class="table table-sm table-vcenter table-sticky-header tabla-sel" id="tabla-vacunas">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">✔</th>
+                                <th>Cliente</th>
+                                <th>Teléfono</th>
+                                <th>Mascotas</th>
+                                <th>Tipo recordatorio</th>
+                                <th>Vacuna</th>
+                                <th>Próxima fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in vacunas %}
+                            {% set m0 = c.mascotas[0] if c.mascotas else {} %}
+                            {% set r0 = m0.recordatorios[0] if m0.recordatorios is defined and m0.recordatorios else {} %}
+                            {% set t0 = r0.tipos[0] if r0.tipos is defined and r0.tipos else {} %}
+                            <tr data-tipo="vacunas" data-idx="{{ loop.index0 }}"
+                                data-enviado="{{ '1' if c.enviado else '0' }}"
+                                data-nombre="{{ c.nombre|e }}"
+                                data-mensaje="{{ c.mensaje_completo|e }}"
+                                class="{{ 'table-success' if c.enviado else '' }}">
+                                <td class="text-center">
+                                    <input type="radio" class="sel-row" name="sel-vacunas" value="{{ loop.index0 }}">
+                                    {{ '✅' if c.enviado else '⬜' }}
+                                </td>
+                                <td>{{ c.nombre }}</td>
+                                <td>{{ c.telefono_display }}</td>
+                                <td>{{ c.mascotas_txt }}</td>
+                                <td>{{ r0.nombre or '' }}</td>
+                                <td>{{ t0.nombre or '' }}</td>
+                                <td>{{ t0.fecha or '' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" class="text-center text-secondary py-3">Sin clientes importados.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Modal Importar (Bootstrap) -->
+<div class="modal modal-blur fade" id="modalImportar" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Importar Excel</h5>
+                <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="form-importar" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <p class="text-secondary">Puedes seleccionar varios archivos. Se detecta automáticamente si son de citas o vacunas.</p>
+                    <input type="file" class="form-control" name="files" multiple accept=".xlsx,.xls" required>
+                    <div id="import-result" class="mt-3 small"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success btn-sm">Importar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Reset (Bootstrap) -->
+<div class="modal modal-blur fade" id="modalReset" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+            <div class="modal-body text-center">
+                <h3>¿Borrar todo?</h3>
+                <p class="text-secondary">Se eliminarán clientes importados, historial de envíos y reportes. No se toca Ingresos ni Egresos.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger btn-sm" id="btn-confirmar-reset">Sí, borrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ver Mensaje (propio, NO depende de Bootstrap JS) -->
+<div class="modal-propio" id="modalMensaje">
+    <div class="caja">
+        <header>
+            <strong id="msg-title">Mensaje</strong>
+            <button type="button" class="cerrar" id="msg-cerrar">×</button>
+        </header>
+        <div class="cuerpo" id="msg-body"></div>
+        <footer>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-copiar-msg">📋 Copiar</button>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+    // ============================================================
+    // Persistencia de UI: tab activo y scroll
+    // ============================================================
+    const LS_KEY = 'vetsuite.recordatorios.ui';
+
+    function cargarUI() {
+        try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }
+        catch (e) { return {}; }
+    }
+    function guardarUI(patch) {
+        const actual = cargarUI();
+        localStorage.setItem(LS_KEY, JSON.stringify({ ...actual, ...patch }));
+    }
+
+    const ui = cargarUI();
+
+    // Restaurar tab activo
+    if (ui.tab === 'vacunas') {
+        const btn = document.getElementById('tab-btn-vacunas');
+        if (btn && window.bootstrap && bootstrap.Tab) {
+            new bootstrap.Tab(btn).show();
+        } else if (btn) {
+            document.getElementById('tab-citas').classList.remove('show', 'active');
+            document.getElementById('tab-vacunas').classList.add('show', 'active');
+            document.getElementById('tab-btn-citas').classList.remove('active');
+            document.getElementById('tab-btn-vacunas').classList.add('active');
+        }
+    }
+    document.querySelectorAll('[data-bs-toggle="tab"]').forEach(btn => {
+        btn.addEventListener('shown.bs.tab', (e) => {
+            const target = e.target.getAttribute('data-bs-target');
+            guardarUI({ tab: target === '#tab-vacunas' ? 'vacunas' : 'citas' });
+        });
+    });
+
+    // Restaurar scroll por tabla
+    function restaurarScroll(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const key = 'scroll.' + id;
+        setTimeout(() => { el.scrollTop = ui[key] || 0; }, 50);
+        el.addEventListener('scroll', () => {
+            guardarUI({ [key]: el.scrollTop });
+        }, { passive: true });
+    }
+    restaurarScroll('scroll-citas');
+    restaurarScroll('scroll-vacunas');
+
+    // Restaurar scroll de página
+    window.addEventListener('scroll', () => {
+        guardarUI({ pageScroll: window.scrollY });
+    }, { passive: true });
+    window.addEventListener('load', () => {
+        if (ui.pageScroll) window.scrollTo(0, ui.pageScroll);
+    });
+
+    // ============================================================
+    // Cambio de sucursal automático
+    // ============================================================
+    const selectSuc = document.getElementById('select-sucursal');
+    if (selectSuc) {
+        selectSuc.addEventListener('change', () => {
+            document.getElementById('form-sucursal').submit();
+        });
+    }
+
+    // ============================================================
+    // Importar
+    // ============================================================
+    const formImport = document.getElementById('form-importar');
+    if (formImport) {
+        formImport.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(formImport);
+            const out = document.getElementById('import-result');
+            out.innerHTML = '<div class="text-secondary">Importando...</div>';
+            try {
+                const res = await fetch('/recordatorios/importar', {method:'POST', body: fd});
+                const data = await res.json();
+                out.innerHTML = (data.resumen || []).map(r => `<div>${r}</div>`).join('');
+                setTimeout(() => window.location.reload(), 1500);
+            } catch (err) {
+                out.innerHTML = `<div class="text-danger">Error: ${err}</div>`;
+            }
+        });
+    }
+
+    // ============================================================
+    // Reset
+    // ============================================================
+    const btnReset = document.getElementById('btn-confirmar-reset');
+    if (btnReset) {
+        btnReset.addEventListener('click', async () => {
+            await fetch('/recordatorios/reset', {method:'POST'});
+            localStorage.removeItem(LS_KEY);
+            window.location.reload();
+        });
+    }
+
+    // ============================================================
+    // Selección por clic en la fila + botón único Enviar/Desmarcar
+    // ============================================================
+    const btnAccion = document.getElementById('btn-accion');
+    let seleccion = null;
+
+    function limpiarSeleccion() {
+        document.querySelectorAll('.tabla-sel tbody tr.fila-sel').forEach(tr => tr.classList.remove('fila-sel'));
+        document.querySelectorAll('.sel-row').forEach(r => r.checked = false);
+        seleccion = null;
+        actualizarBoton();
+    }
+
+    function actualizarBoton() {
+        if (!seleccion) {
+            btnAccion.disabled = true;
+            btnAccion.textContent = '📱 Enviar';
+            btnAccion.className = 'btn btn-outline-success btn-sm';
+            return;
+        }
+        const enviado = seleccion.fila.dataset.enviado === '1';
+        btnAccion.disabled = false;
+        if (enviado) {
+            btnAccion.textContent = '↩️ Desmarcar';
+            btnAccion.className = 'btn btn-outline-warning btn-sm';
+        } else {
+            btnAccion.textContent = '📱 Enviar';
+            btnAccion.className = 'btn btn-outline-success btn-sm';
+        }
+    }
+
+    document.querySelectorAll('.tabla-sel tbody tr[data-idx]').forEach(tr => {
+        // Clic simple: seleccionar
+        tr.addEventListener('click', (ev) => {
+            if (ev.target.classList.contains('sel-row')) return;
+            const radio = tr.querySelector('.sel-row');
+            if (!radio) return;
+            if (seleccion && seleccion.fila === tr) { limpiarSeleccion(); return; }
+            limpiarSeleccion();
+            radio.checked = true;
+            tr.classList.add('fila-sel');
+            seleccion = { tipo: tr.dataset.tipo, idx: parseInt(tr.dataset.idx, 10), fila: tr };
+            actualizarBoton();
+        });
+
+        // Doble clic: ver mensaje
+        tr.addEventListener('dblclick', (ev) => {
+            ev.preventDefault();
+            const nombre = tr.dataset.nombre || '';
+            const mensaje = tr.dataset.mensaje || '';
+            abrirModal('Mensaje para ' + nombre, mensaje);
+        });
+    });
+
+    // ============================================================
+    // Botón único: Enviar si no enviado / Desmarcar si enviado
+    // ============================================================
+    btnAccion.addEventListener('click', async () => {
+        if (!seleccion) return;
+        const { tipo, idx, fila } = seleccion;
+        const enviado = fila.dataset.enviado === '1';
+
+        if (enviado) {
+            // Desmarcar
+            await fetch(`/recordatorios/desmarcar/${tipo}/${idx}`, {method:'POST'});
+            window.location.reload();
+            return;
+        }
+
+        // Enviar: obtener URL + mensaje, copiar, abrir wa.me, marcar automáticamente
+        try {
+            const res = await fetch(`/recordatorios/whatsapp/${tipo}/${idx}`);
+            const data = await res.json();
+            if (!data.ok) { alert('Error al obtener el mensaje'); return; }
+            try { await navigator.clipboard.writeText(data.mensaje); } catch(e) {}
+            window.open(data.url, '_blank');
+            // Marcar como enviado automáticamente
+            await fetch(`/recordatorios/marcar/${tipo}/${idx}`, {method:'POST'});
+            window.location.reload();
+        } catch (err) {
+            alert('Error: ' + err);
+        }
+    });
+
+    // ============================================================
+    // Ver mensaje (modal propio)
+    // ============================================================
+    const modal = document.getElementById('modalMensaje');
+    const msgTitle = document.getElementById('msg-title');
+    const msgBody = document.getElementById('msg-body');
+    let ultimoMensaje = '';
+
+    function abrirModal(titulo, texto) {
+        ultimoMensaje = texto;
+        msgTitle.textContent = titulo;
+        msgBody.textContent = texto;
+        modal.classList.add('abierto');
+    }
+    function cerrarModal() {
+        modal.classList.remove('abierto');
+    }
+
+    document.getElementById('msg-cerrar').addEventListener('click', cerrarModal);
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') cerrarModal(); });
+
+    document.getElementById('btn-copiar-msg').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(ultimoMensaje); } catch(e) {}
+    });
+
+    actualizarBoton();
+})();
+</script>
+{% endblock %}

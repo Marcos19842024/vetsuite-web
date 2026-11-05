@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">🏷️ Reclasificar productos</h2>
+            <div class="text-muted small">
+                {% if pendientes %}
+                    {{ pendientes|length }} producto(s) sin catalogar
+                {% else %}
+                    No hay productos pendientes
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-auto btn-list">
+            <a href="/ingresos/catalogo" class="btn btn-outline-secondary btn-sm">
+                📚 Ver catálogo completo
+            </a>
+            <a href="/ingresos" class="btn btn-outline-secondary btn-sm">← Volver</a>
+        </div>
+    </div>
+</div>
+
+{% if mensaje %}<div class="alert alert-success mb-3">{{ mensaje }}</div>{% endif %}
+
+{% if pendientes %}
+<div class="card">
+    <form method="post" action="/ingresos/reclasificar/guardar-async">
+        <div class="tabla-scroll">
+            <table class="table table-vcenter table-sm table-hover card-table table-striped">
+                <thead><tr><th>Producto</th><th style="width: 200px;">Categoría</th></tr></thead>
+                <tbody>
+                    {% for p in pendientes %}
+                    <tr>
+                        <td>{{ p.producto }}</td>
+                        <td>
+                            <select name="categoria_{{ loop.index0 }}" class="form-select form-select-sm">
+                                {% for c in categorias %}
+                                <option value="{{ c }}" {% if c == 'U' %}selected{% endif %}>{{ c }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="hidden" name="producto_{{ loop.index0 }}" value="{{ p.producto }}">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2 bg-white">
+            <button type="submit" class="btn btn-primary btn-sm">💾 Guardar todas</button>
+        </div>
+    </form>
+</div>
+{% else %}
+<div class="alert alert-success">No hay productos pendientes de clasificar.</div>
+{% endif %}
+{% endblock %}

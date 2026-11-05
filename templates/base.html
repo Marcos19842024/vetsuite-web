@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}VetSuite Web{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    {% block head %}{% endblock %}
+</head>
+<body class="layout-fluid {% block body_class %}{% endblock %}">
+    {% set __mods = modulos_ip(request) %}
+    <div class="page">
+        <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
+            <div class="container-fluid">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <h1 class="navbar-brand navbar-brand-autodark">
+                    <span style="font-size: 1.15rem; font-weight: 600;">🐾 VetSuite</span>
+                </h1>
+                <div class="collapse navbar-collapse" id="sidebar-menu">
+                    <ul class="navbar-nav pt-lg-3">
+                        {% if 'ingresos' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/ingresos') %}active{% endif %}">
+                                <a class="nav-link" href="/ingresos">
+                                    <span class="nav-link-icon">📥</span>
+                                    <span class="nav-link-title">Ingresos</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                        
+                        {% if 'egresos' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/egresos') %}active{% endif %}">
+                                <a class="nav-link" href="/egresos">
+                                    <span class="nav-link-icon">📤</span>
+                                    <span class="nav-link-title">Egresos</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        {% if 'corte semanal' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/corte_semanal') %}active{% endif %}">
+                                <a class="nav-link" href="/corte_semanal">
+                                    <span class="nav-link-icon">📊</span>
+                                    <span class="nav-link-title">Corte Semanal</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        {% if 'servicios externos' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/servicios_externos') %}active{% endif %}">
+                                <a class="nav-link" href="/servicios_externos">
+                                    <span class="nav-link-icon">🔧</span>
+                                    <span class="nav-link-title">Servicios Externos</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        {% if 'recordatorios' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/recordatorios') %}active{% endif %}">
+                                <a class="nav-link" href="/recordatorios">
+                                    <span class="nav-link-icon">📅</span>
+                                    <span class="nav-link-title">Recordatorios</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
+                        {% if es_admin_ip(request) %}
+                            <li class="nav-item {% if request.url.path.startswith('/admin_ips') %}active{% endif %}">
+                                    <a class="nav-link" href="/admin/ips">
+                                    <span class="nav-link-icon">🔐</span>
+                                    <span class="nav-link-title">Permisos IP</span>
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </aside>
+
+        <div class="page-wrapper">
+            <div class="page-body">
+                <div class="container-xl">
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

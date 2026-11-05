@@ -1,0 +1,864 @@
+{% extends "base.html" %}
+{% block title %}Servicios Externos{% endblock %}
+{% block content %}
+<!-- Header -->
+<div class="page-header mb-3">
+  <div class="row align-items-center">
+    <div class="col">
+      <h2 class="page-title">
+        Servicios Externos
+        <span class="text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
+          Sem <span id="f-semana-rango">—</span>
+        </span>
+        <span id="badge-semana-estado" class="badge" style="font-size: .85rem; margin-left: .75rem;"></span>
+      </h2>
+    </div>
+  </div>
+</div>
+
+<!-- Barra de herramientas -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+
+    {# Izquierda: botón principal + acciones #}
+    <div class="btn-list">
+      {# Cerrar semana (solo si abierta) #}
+      <button type="button" class="btn btn-sm btn-outline-primary" id="btn-cerrar-semana">
+        🔒 Cerrar semana
+      </button>
+
+      {# Reabrir semana (solo si cerrada) #}
+      <button type="button" class="btn btn-sm btn-outline-primary" id="btn-reabrir-semana" style="display:none;">
+        🔓 Reabrir semana
+      </button>
+
+      <button
+        type="button" class="btn btn-outline-secondary btn-sm"
+        onclick="abrirModalReportes()">
+        📋 Ver registros
+      </button>
+
+      <span class="vr mx-2"></span>
+
+      <button type="button" class="btn btn-outline-primary btn-sm" id="btn-nuevo">
+        + Nuevo servicio
+      </button>
+    </div>
+
+    {# Derecha: navegación de semanas #}
+    <div class="ms-auto btn-list">
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-sm btn-ghost-secondary" id="btn-semana-prev">
+          ⬅️
+        </button>
+        <input type="week" id="f-semana" class="form-control form-control-sm"
+               style="width:180px">
+        <button type="button" class="btn btn-sm btn-ghost-secondary" id="btn-semana-next">
+          ➡️
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label mb-1">Concepto</label>
+        <select id="f-concepto" class="form-select form-select-sm">
+          <option value="">Todos</option>
+          {% for c in cfg.conceptos %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label mb-1">Estado</label>
+        <select id="f-estado" class="form-select form-select-sm">
+          <option value="">Todos</option>
+          <option value="pendiente">Pendientes</option>
+          <option value="pagado">Pagados</option>
+        </select>
+      </div>
+
+      <div class="col-auto ms-auto">
+        <button class="btn btn-outline-secondary btn-sm" id="btn-limpiar">Limpiar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabla -->
+<div class="card">
+  <div class="tabla-scroll">
+    <table class="table table-vcenter table-sm table-hover card-table table-striped">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Fecha</th>
+          <th>Cliente</th>
+          <th>Mascota</th>
+          <th>Recup.</th>
+          <th>Entrega</th>
+          <th class="text-end">Total</th>
+          <th>Pago</th>
+          <th>Tipo pago</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="10" class="text-center text-muted py-3">Cargando…</td></tr>
+      </tbody>
+      <tfoot>
+        <tr class="fw-bold">
+          <td class="text-start">Totales</td>
+          <td></td>
+          <td class="text-center">
+            <span id="tf-n">0</span> registros
+          </td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td class="text-end" id="tf-total">$0.00</td>
+          <td></td>
+          <td class="text-end text-danger" id="tf-pendiente">$0.00</td>
+          <td class="text-end text-success" id="tf-pagado">$0.00</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- Modal alta/edición -->
+<dialog id="modal-serv" class="modal-propio">
+  <form method="dialog" id="form-serv">
+    <input type="hidden" id="m-id" value="0">
+    <div class="modal-header">
+      <h5 class="modal-title" id="m-titulo">Nuevo servicio externo</h5>
+      <button type="button" class="btn-close" id="m-cerrar-x" aria-label="Cerrar"></button>
+    </div>
+    <div class="modal-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Concepto *</label>
+          <div class="input-group input-group-sm">
+            <select id="m-concepto" class="form-select" required></select>
+            <button type="button" class="btn btn-outline-secondary"
+                    id="btn-add-concepto" title="Agregar concepto">+</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Fecha *</label>
+          <input type="date" id="m-fecha" class="form-control form-control-sm" required>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Cliente *</label>
+          <input type="text" id="m-cliente" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Mascota</label>
+          <input type="text" id="m-mascota" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Recuperación</label>
+          <select id="m-recuperacion" class="form-select form-select-sm">
+            <option value="">—</option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="N/A">N/A</option>
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Fecha de entrega</label>
+          <input type="date" id="m-fecha-entrega" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Total *</label>
+          <input type="number" step="0.01" min="0" id="m-total"
+                 class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha de pago</label>
+          <input type="date" id="m-fecha-pago" class="form-control form-control-sm">
+          <div class="form-text">Vacío = pendiente</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Tipo de pago</label>
+          <select id="m-tipo-pago" class="form-select form-select-sm" disabled></select>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Notas</label>
+          <textarea id="m-notas" class="form-control form-control-sm" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-danger btn-sm me-auto"
+          id="m-eliminar" style="display: none;">🗑 Eliminar</button>
+      <button type="submit" class="btn btn-primary btn-sm" id="m-guardar">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="modal-reportes" style="max-width: 760px; width: 92vw;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">📊 Registros por período</h5>
+      <button type="button" class="btn-close btn-sm"
+              onclick="document.getElementById('modal-reportes').close()"></button>
+    </div>
+    <div class="modal-body" style="max-height: 70vh; overflow: auto;">
+      <div id="arbol-reportes">
+        <p class="text-muted small mb-2">
+          Clic en <strong>concepto</strong>, <strong>estado</strong> o
+          <strong>mes</strong> para ir a esa semana.
+        </p>
+        <div class="text-muted text-center py-4">Cargando...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span class="text-muted small me-auto" id="arbol-resumen"></span>
+    </div>
+  </div>
+</dialog>
+
+<script type="application/json" id="cfg-data">{{ cfg | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  const CONFIG = JSON.parse(document.getElementById('cfg-data').textContent);
+  let FILAS = [];
+  let filaSeleccionada = null;
+  
+  // Estado global de la semana
+  let SEMANA = { anio: null, semana: null, estado: 'abierta', desde: null, hasta: null };
+
+  const $ = (id) => document.getElementById(id);
+  const fmtMonto = (n) => '$' + Number(n || 0).toLocaleString('es-MX',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtFecha = (s) => {
+    if (!s) return '—';
+    const [y, m, d] = s.split('-');
+    return `${d}/${m}/${y.slice(2)}`;
+  };
+
+  // ---------- Selects de configuración ----------
+  function llenarSelect(sel, valores, placeholder) {
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (placeholder) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = placeholder;
+      sel.appendChild(o);
+    }
+    valores.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      sel.appendChild(o);
+    });
+  }
+
+  function refrescarSelects() {
+    const mConcepto = $('m-concepto');
+    if (mConcepto) {
+      const actual = mConcepto.value;
+      llenarSelect(mConcepto, CONFIG.conceptos, '—');
+      if (CONFIG.conceptos.includes(actual)) mConcepto.value = actual;
+    }
+    const mTipo = $('m-tipo-pago');
+    if (mTipo) {
+      const actual = mTipo.value;
+      llenarSelect(mTipo, CONFIG.tipos_pago, '—');
+      if (CONFIG.tipos_pago.includes(actual)) mTipo.value = actual;
+    }
+    const pTipo = $('p-tipo');
+    if (pTipo) {
+      const actual = pTipo.value;
+      llenarSelect(pTipo, CONFIG.tipos_pago, '—');
+      if (CONFIG.tipos_pago.includes(actual)) pTipo.value = actual;
+    }
+    const fConcepto = $('f-concepto');
+    if (fConcepto) {
+      const actual = fConcepto.value;
+      llenarSelect(fConcepto, CONFIG.conceptos, 'Todos');
+      if (CONFIG.conceptos.includes(actual)) fConcepto.value = actual;
+    }
+  }
+
+  // ---------- Filtros ----------
+  function aplicarFiltros(filas) {
+    const concepto = $('f-concepto')?.value || '';
+    const estado = $('f-estado')?.value || '';
+
+    return filas.filter(f => {
+      if (concepto && f.concepto !== concepto) return false;
+      if (estado) {
+        const pagado = !!(f.fecha_pago || '').trim();
+        if (estado === 'pagado' && !pagado) return false;
+        if (estado === 'pendiente' && pagado) return false;
+      }
+      return true;
+    });
+  }
+
+  function pintarTotales(filas) {
+    const pendiente = filas.filter(f => !(f.fecha_pago || '').trim())
+      .reduce((s, f) => s + Number(f.total || 0), 0);
+    const cobrado = filas.filter(f => (f.fecha_pago || '').trim())
+      .reduce((s, f) => s + Number(f.total || 0), 0);
+
+    // Footer de la tabla
+    if ($('tf-n'))         $('tf-n').textContent         = filas.length;
+    if ($('tf-pendiente')) $('tf-pendiente').textContent = fmtMonto(pendiente);
+    if ($('tf-pagado'))   $('tf-pagado').textContent   = fmtMonto(cobrado);
+    if ($('tf-total'))     $('tf-total').textContent     = fmtMonto(pendiente + cobrado);
+  }
+
+  function badgeRecup(v) {
+    v = (v || '').trim();
+    if (!v) return '—';
+    if (v === 'Si') return '<span class="badge bg-success">Si</span>';
+    return v;   // "No" y "N/A" en texto normal
+  }
+
+  function pintarTodo() {
+    const tbody = $('tbody');
+    if (!tbody) return;
+    const filtradas = aplicarFiltros(FILAS);
+    pintarTotales(filtradas);
+    filaSeleccionada = null;
+
+    if (!filtradas.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Sin registros</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '';
+    filtradas.forEach(f => {
+      const pagado = !!(f.fecha_pago || '').trim();
+      const tr = document.createElement('tr');
+      tr.dataset.id = f.id;
+      tr.style.cursor = 'pointer';
+      if (!pagado) tr.classList.add('fila-pendiente');
+      tr.innerHTML = `
+        <td>${f.concepto || '—'}</td>
+        <td>${fmtFecha(f.fecha)}</td>
+        <td>${f.cliente || ''}</td>
+        <td>${f.mascota || '—'}</td>
+        <td>${badgeRecup(f.recuperacion)}</td>
+        <td>${fmtFecha(f.fecha_entrega)}</td>
+        <td class="text-end">${fmtMonto(f.total)}</td>
+        <td>${fmtFecha(f.fecha_pago)}</td>
+        <td>${f.tipo_pago || '—'}</td>
+        <td>${pagado
+          ? '<span class="badge badge-pag">Pagado</span>'
+          : '<span class="badge badge-pend">Pendiente</span>'}
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---------- Selección + doble clic en fila ----------
+  function seleccionarFila(tr) {
+    document.querySelectorAll('#tbody tr.seleccionada')
+      .forEach(el => el.classList.remove('seleccionada'));
+    if (tr) {
+      tr.classList.add('seleccionada');
+      filaSeleccionada = Number(tr.dataset.id);
+    } else {
+      filaSeleccionada = null;
+    }
+  }
+
+  // ---------- Modal alta/edición ----------
+  function actualizarEstadoTipoPago() {
+    const fechaPago = $('m-fecha-pago');
+    const tipoPago = $('m-tipo-pago');
+    if (!fechaPago || !tipoPago) return;
+    const tieneFecha = fechaPago.value.trim() !== '';
+    tipoPago.disabled = !tieneFecha;
+    if (!tieneFecha) tipoPago.value = '';
+  }
+
+  function abrirModal(fila) {
+    const modal = $('modal-serv');
+    if (!modal) { console.error('modal-serv no existe'); return; }
+
+    $('m-id').value = fila ? fila.id : 0;
+    $('m-titulo').textContent = fila ? 'Editar servicio externo' : 'Nuevo servicio externo';
+    $('m-concepto').value = fila?.concepto || (CONFIG.conceptos[0] || '');
+    $('m-fecha').value = fila?.fecha || new Date().toISOString().slice(0, 10);
+    $('m-cliente').value = fila?.cliente || '';
+    $('m-mascota').value = fila?.mascota || '';
+    $('m-recuperacion').value = fila?.recuperacion || '';
+    $('m-fecha-entrega').value = fila?.fecha_entrega || '';
+    $('m-total').value = fila ? fila.total : '';
+    $('m-fecha-pago').value = fila?.fecha_pago || '';
+    $('m-tipo-pago').value = fila?.tipo_pago || '';
+    $('m-notas').value = fila?.notas || '';
+    actualizarEstadoTipoPago();
+
+    // Mostrar/ocultar el botón eliminar solo si es edición
+    if ($('m-eliminar')) {
+      $('m-eliminar').style.display = fila ? '' : 'none';
+      $('m-eliminar').dataset.id = fila ? fila.id : '';
+    }
+
+    if (typeof modal.showModal === 'function') modal.showModal();
+    else modal.setAttribute('open', '');
+    setTimeout(() => $('m-cliente')?.focus(), 50);
+  }
+
+  // ---------- Agregar a listas ----------
+  async function agregarAConcepto(valor) {
+    valor = (valor || '').trim();
+    if (!valor) return false;
+    const fd = new FormData();
+    fd.append('valor', valor);
+    try {
+      const r = await fetch('/servicios_externos/config/concepto',
+                            { method: 'POST', body: fd });
+      const cfg = await r.json();
+      CONFIG.conceptos = cfg.conceptos;
+      refrescarSelects();
+      return true;
+    } catch (err) {
+      alert('Error al agregar: ' + err.message);
+      return false;
+    }
+  }
+
+  // ============================================================
+  // Modal de Reportes (árbol Año → Mes → Semana → Concepto → Estado)
+  // ============================================================
+  const MESES_ES_REP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  async function abrirModalReportes() {
+    const modal = document.getElementById('modal-reportes');
+    const cont = document.getElementById('arbol-reportes');
+    const resumen = document.getElementById('arbol-resumen');
+
+    modal.showModal();
+    cont.innerHTML = '<div class="text-muted text-center py-4">Cargando...</div>';
+    resumen.textContent = '';
+
+    try {
+      const resp = await fetch('/servicios_externos/arbol', { cache: 'no-store' });
+      const data = await resp.json();
+      const anios = Object.keys(data).filter(k => k !== '_total');
+
+      if (anios.length === 0) {
+        cont.innerHTML = '<div class="text-muted text-center py-4">No hay registros aún.</div>';
+        return;
+      }
+
+      cont.innerHTML = '';
+      const ul = document.createElement('ul');
+      ul.className = 'arbol-reportes';
+      anios.sort().reverse().forEach(a => ul.appendChild(nodoAnio(a, data[a])));
+      cont.appendChild(ul);
+
+      const tg = data._total || { n: 0, total: 0 };
+      resumen.textContent = `Total general: ${tg.n} registros · $${fmtMonto(tg.total)}`;
+    } catch (e) {
+      cont.innerHTML = `<div class="text-danger text-center py-4">Error: ${e.message}</div>`;
+    }
+  }
+
+  function nodoAnio(anio, meses) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const t = meses._total || { n: 0, total: 0 };
+    sum.innerHTML = `<strong>📅 ${anio}</strong>
+      <span class="text-muted small ms-2">${t.n} reg. · $${fmtMonto(t.total)}</span>`;
+    det.appendChild(sum);
+
+    const ul = document.createElement('ul');
+    Object.keys(meses).filter(k => k !== '_total').sort().reverse()
+      .forEach(m => ul.appendChild(nodoMes(anio, m, meses[m])));
+    det.appendChild(ul);
+    li.appendChild(det);
+    return li;
+  }
+
+  function nodoMes(anio, mes, semanas) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+    const t = semanas._total || { n: 0, total: 0 };
+    const nombreMes = MESES_ES_REP[parseInt(mes, 10) - 1] || mes;
+    sum.innerHTML = `<strong>📆 ${nombreMes}</strong>
+      <span class="text-muted small ms-2">${t.n} reg. · $${fmtMonto(t.total)}</span>`;
+    det.appendChild(sum);
+
+    const ul = document.createElement('ul');
+    Object.keys(semanas).filter(k => k !== '_total').sort()
+      .forEach(s => ul.appendChild(nodoSemana(anio, s, semanas[s])));
+    det.appendChild(ul);
+    li.appendChild(det);
+    return li;
+  }
+
+  function nodoSemana(anio, semana, conceptos) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nodo-sucursal-btn';
+    const t = conceptos._total || { n: 0, total: 0 };
+    btn.innerHTML = `<strong>📅 Sem ${parseInt(semana, 10)}</strong>
+      <span class="text-muted small ms-2">${t.n} reg. · $${fmtMonto(t.total)}</span>`;
+    btn.title = `Ir a la semana ${semana} de ${anio}`;
+    btn.addEventListener('click', () => {
+      document.getElementById('modal-reportes').close();
+      SEMANA = {
+        ...SEMANA,
+        anio: parseInt(anio, 10),
+        semana: parseInt(semana, 10),
+      };
+      cargar();
+    });
+    li.appendChild(btn);
+
+    // Conceptos dentro de esa semana
+    const ul = document.createElement('ul');
+    Object.keys(conceptos).filter(k => k !== '_total').sort()
+      .forEach(c => ul.appendChild(nodoConcepto(anio, semana, c, conceptos[c])));
+    li.appendChild(ul);
+
+    return li;
+  }
+
+  function nodoConcepto(anio, semana, concepto, estados) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nodo-sucursal-btn';
+    const t = estados._total || { n: 0, total: 0 };
+    btn.innerHTML = `<strong>🔧 ${concepto}</strong>
+      <span class="text-muted small ms-2">${t.n} reg. · $${fmtMonto(t.total)}</span>`;
+    btn.title = `Ir a la semana ${semana} de ${anio} (todos los estados)`;
+    btn.addEventListener('click', () => {
+      document.getElementById('modal-reportes').close();
+      SEMANA = {
+        ...SEMANA,
+        anio: parseInt(anio, 10),
+        semana: parseInt(semana, 10),
+      };
+      // limpiar filtro de estado para ver todo el concepto
+      if ($('f-estado')) $('f-estado').value = '';
+      cargar();
+    });
+    li.appendChild(btn);
+
+    const ul = document.createElement('ul');
+    ul.className = 'arbol-metodos';
+    ['pendiente', 'pagado'].forEach(est => {
+      const info = estados[est] || { n: 0, total: 0 };
+      const liE = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'nodo-hoja' + (info.n === 0 ? ' nodo-vacio' : '');
+      b.disabled = info.n === 0;
+      const etiqueta = est === 'pagado' ? 'Pagado' : 'Pendiente';
+      b.innerHTML = `<strong>${etiqueta}</strong>
+        <span class="text-muted small ms-2">${info.n} · $${fmtMonto(info.total)}</span>`;
+      b.title = info.n > 0
+        ? `Ir a la semana ${semana} filtrado por ${etiqueta.toLowerCase()}`
+        : `Sin registros ${etiqueta.toLowerCase()}s`;
+      b.addEventListener('click', () => {
+        document.getElementById('modal-reportes').close();
+        SEMANA = {
+          ...SEMANA,
+          anio: parseInt(anio, 10),
+          semana: parseInt(semana, 10),
+        };
+        cargar().then(() => {
+          if ($('f-estado')) $('f-estado').value = est;
+          pintarTodo();
+        });
+      });
+      liE.appendChild(b);
+      ul.appendChild(liE);
+    });
+    li.appendChild(ul);
+    return li;
+  }
+
+  const MESES_CORTOS = ['ene','feb','mar','abr','may','jun',
+                      'jul','ago','sep','oct','nov','dic'];
+
+  function formatearRango(desdeIso, hastaIso) {
+    // desdeIso = "2026-11-02", hastaIso = "2026-11-08"
+    const [ya, ma, da] = desdeIso.split('-').map(Number);
+    const [yh, mh, dh] = hastaIso.split('-').map(Number);
+
+    const diaD = String(da);        // "2" (sin cero a la izquierda)
+    const diaH = String(dh);        // "8"
+    const mesD = MESES_CORTOS[ma - 1];   // "nov"
+    const mesH = MESES_CORTOS[mh - 1];   // "nov"
+
+    // Si es el mismo mes y año: "2 nov al 8 nov 2026"
+    // Si cambia de mes:         "28 oct al 3 nov 2026"
+    // Si cambia de año:         "29 dic 2025 al 4 ene 2026"
+    if (ya === yh) {
+      return `del ${diaD} ${mesD} al ${diaH} ${mesH} ${ya}`;
+    }
+    return `del ${diaD} ${mesD} ${ya} al ${diaH} ${mesH} ${yh}`;
+  }
+
+  // Calcular lunes/domingo de una fecha (ISO week)
+  function semanaDeFecha(fechaIso) {
+    const d = new Date(fechaIso + 'T00:00:00');
+    // Copia del algoritmo ISO: lunes = 1, domingo = 7
+    const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = tmp.getUTCDay() || 7;
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+    return { anio: tmp.getUTCFullYear(), semana: weekNo };
+  }
+
+  function rangoSemana(anio, semana) {
+    // Lunes de la semana ISO
+    const simple = new Date(Date.UTC(anio, 0, 1 + (semana - 1) * 7));
+    const dow = simple.getUTCDay() || 7;
+    const lunes = new Date(simple);
+    lunes.setUTCDate(simple.getUTCDate() - dow + 1);
+    const domingo = new Date(lunes);
+    domingo.setUTCDate(lunes.getUTCDate() + 6);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    return { desde: fmt(lunes), hasta: fmt(domingo) };
+  }
+
+  async function cargar() {
+    const anio = SEMANA.anio;
+    const semana = SEMANA.semana;
+    try {
+      const url = `/servicios_externos/datos?anio=${anio}&semana=${semana}`;
+      const r = await fetch(url, { cache: 'no-store' });
+      const data = await r.json();
+      FILAS = data.filas || [];
+      SEMANA = { ...SEMANA, ...data.semana };
+      pintarTodo();
+      pintarEstadoSemana();
+    } catch (e) {
+      console.error('Error al cargar', e);
+    }
+  }
+
+  function pintarEstadoSemana() {
+    const cerrada = SEMANA.estado === 'cerrada';
+
+    // Rango legible: "2 nov al 8 nov 2026"
+    const r = rangoSemana(SEMANA.anio, SEMANA.semana);
+    const textoRango = formatearRango(r.desde, r.hasta);
+
+    if ($('f-semana-rango-detalle')) $('f-semana-rango-detalle').textContent = textoRango;
+    if ($('f-semana-rango'))         $('f-semana-rango').textContent         = textoRango;
+
+    // Input type="week"
+    const input = $('f-semana');
+    if (input && document.activeElement !== input) {
+      const ss = String(SEMANA.semana).padStart(2, '0');
+      input.value = `${SEMANA.anio}-W${ss}`;
+    }
+
+    // Badge
+    const badge = $('badge-semana-estado');
+    if (badge) {
+      badge.textContent = cerrada ? '🔐 Cerrada' : '🔓 Abierta';
+      badge.className = 'badge ' + (cerrada ? 'bg-secondary-lt text-secondary' : 'bg-success-lt text-success');
+    }
+
+    // Botones
+    if ($('btn-cerrar-semana'))  $('btn-cerrar-semana').style.display  = cerrada ? 'none' : '';
+    if ($('btn-reabrir-semana')) $('btn-reabrir-semana').style.display = cerrada ? '' : 'none';
+
+    // "+ Nuevo servicio" deshabilitado si cerrada
+    if ($('btn-nuevo')) $('btn-nuevo').disabled = cerrada;
+
+    // Cursor de filas
+    document.querySelectorAll('#tbody tr').forEach(tr => {
+      tr.style.cursor = cerrada ? 'default' : 'pointer';
+    });
+  }
+
+  // ---------- Init ----------
+  function init() {
+    const hoy = new Date().toISOString().slice(0, 10);
+    SEMANA = { ...SEMANA, ...semanaDeFecha(hoy) };
+    refrescarSelects();
+    cargar();
+
+    $('btn-nuevo')?.addEventListener('click', () => abrirModal(null));
+
+    // Modal alta/edición
+    $('m-cerrar-x')?.addEventListener('click', () => $('modal-serv')?.close());
+
+    $('m-eliminar')?.addEventListener('click', async () => {
+      const id = Number($('m-eliminar').dataset.id);
+      if (!id) return;
+      const fila = FILAS.find(f => f.id === id);
+      if (!fila) return;
+      if (!confirm(`¿Eliminar el servicio de ${fila.cliente}?`)) return;
+      const fd = new FormData();
+      fd.append('id', id);
+      try {
+        const r = await fetch('/servicios_externos/eliminar', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        $('modal-serv')?.close();
+        await cargar();
+      } catch (err) {
+        alert('Error al eliminar: ' + err.message);
+      }
+    });
+
+    $('m-fecha-pago')?.addEventListener('change', actualizarEstadoTipoPago);
+
+    $('form-serv')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData();
+      fd.append('id', $('m-id').value);
+      fd.append('concepto', $('m-concepto').value);
+      fd.append('fecha', $('m-fecha').value);
+      fd.append('cliente', $('m-cliente').value);
+      fd.append('mascota', $('m-mascota').value);
+      fd.append('recuperacion', $('m-recuperacion').value);
+      fd.append('fecha_entrega', $('m-fecha-entrega').value);
+      fd.append('total', $('m-total').value || 0);
+      fd.append('fecha_pago', $('m-fecha-pago').value);
+      fd.append('tipo_pago', $('m-tipo-pago').value);
+      fd.append('notas', $('m-notas').value);
+      try {
+        const r = await fetch('/servicios_externos/actualizar',
+                              { method: 'POST', body: fd });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        $('modal-serv')?.close();
+        await cargar();
+      } catch (err) {
+        alert('Error al guardar: ' + err.message);
+      }
+    });
+
+    // Botón cerrar
+    $('btn-cerrar-semana')?.addEventListener('click', async () => {
+      if (!confirm(`¿Cerrar la semana ${SEMANA.semana} de ${SEMANA.anio}?\nNo se podrá editar después.`)) return;
+      const fd = new FormData();
+      fd.append('anio', SEMANA.anio);
+      fd.append('semana', SEMANA.semana);
+      try {
+        const r = await fetch('/servicios_externos/cerrar', { method: 'POST', body: fd });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(err.error || 'Error al cerrar');
+        }
+        await cargar();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    });
+
+    // Botón reabrir
+    $('btn-reabrir-semana')?.addEventListener('click', async () => {
+      if (!confirm(`¿Reabrir la semana ${SEMANA.semana}?`)) return;
+      const fd = new FormData();
+      fd.append('anio', SEMANA.anio);
+      fd.append('semana', SEMANA.semana);
+      try {
+        const r = await fetch('/servicios_externos/reabrir', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error('Error al reabrir');
+        await cargar();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    });
+
+    // Navegación prev/next
+    $('btn-semana-prev')?.addEventListener('click', () => {
+      const { desde } = rangoSemana(SEMANA.anio, SEMANA.semana);
+      const d = new Date(desde + 'T00:00:00');
+      d.setDate(d.getDate() - 7);
+      SEMANA = { ...SEMANA, ...semanaDeFecha(d.toISOString().slice(0, 10)) };
+      cargar();
+    });
+
+    $('btn-semana-next')?.addEventListener('click', () => {
+      const { hasta } = rangoSemana(SEMANA.anio, SEMANA.semana);
+      const d = new Date(hasta + 'T00:00:00');
+      d.setDate(d.getDate() + 1);  // lunes siguiente
+      SEMANA = { ...SEMANA, ...semanaDeFecha(d.toISOString().slice(0, 10)) };
+      cargar();
+    });
+
+    // Cambio manual del input
+    $('f-semana')?.addEventListener('change', (e) => {
+      const val = e.target.value;   // "2026-W45"
+      if (!val) return;
+      const [a, w] = val.split('-W');
+      if (!a || !w) return;
+      SEMANA = { ...SEMANA, anio: parseInt(a, 10), semana: parseInt(w, 10) };
+      cargar();
+    });
+
+    // ====== TABLA: clic simple selecciona, doble clic edita ======
+    $('tbody')?.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-id]');
+      if (!tr) return;
+      seleccionarFila(tr);
+    });
+
+    // Bloquear doble clic en filas si está cerrada
+    $('tbody')?.addEventListener('dblclick', (e) => {
+      if (SEMANA.estado === 'cerrada') return;
+      const tr = e.target.closest('tr[data-id]');
+      if (!tr) return;
+      const id = Number(tr.dataset.id);
+      const fila = FILAS.find(f => f.id === id);
+      if (fila) abrirModal(fila);
+    });
+
+    // Agregar a listas
+    $('btn-add-concepto')?.addEventListener('click', async () => {
+      const v = prompt('Nuevo concepto:');
+      if (v && await agregarAConcepto(v)) $('m-concepto').value = v.trim();
+    });
+
+    // Filtros
+    let tBuscar = null;
+    ['f-concepto', 'f-estado', 'f-desde', 'f-hasta'].forEach(id => {
+      $(id)?.addEventListener('change', pintarTodo);
+    });
+    $('btn-limpiar')?.addEventListener('click', () => {
+      if ($('f-concepto')) $('f-concepto').value = '';
+      if ($('f-estado')) $('f-estado').value = '';
+      if ($('f-desde')) $('f-desde').value = '';
+      if ($('f-hasta')) $('f-hasta').value = '';
+      pintarTodo();
+    });
+  }
+
+  // Exponer para los onclick del HTML
+  window.abrirModalReportes = abrirModalReportes;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+{% endblock %}

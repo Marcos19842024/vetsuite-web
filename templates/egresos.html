@@ -1,0 +1,792 @@
+{% extends "base.html" %}
+{% block title %}Egresos{% endblock %}
+{% block content %}
+<!-- Header -->
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Egresos</h2>
+        </div>
+    </div>
+</div>
+
+{% if resumen %}
+<div class="alert alert-success mb-3">{{ resumen }}</div>
+{% endif %}
+
+<!-- Barra de herramientas -->
+<div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+        <div class="btn-list">
+            <div class="col-auto ms-auto d-print-none">
+                <div class="btn-list">
+                    {% if job_activo %}
+                    <button type="button" class="btn btn-warning btn-sm" onclick="abrirModalDescarga()">
+                        ⏳ Descarga en proceso...
+                    </button>
+                    {% elif solicitud_pendiente %}
+                    <button type="button" class="btn btn-info btn-sm" onclick="abrirModalDescarga()">
+                        🔄 Retomar solicitud
+                    </button>
+                    {% else %}
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="abrirModalDescarga()" {% if not configurado %}disabled title="Configura e.firma primero"{% endif %}>
+                        📥 Descargar del SAT
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <button
+                type="button" class="btn btn-outline-secondary btn-sm"
+                onclick="abrirModalReportes()">
+                📋 Ver registros
+            </button>
+            <span class="vr mx-2"></span>
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('modal-zip').showModal()">
+                📦 ZIP mensual
+            </button>
+        </div>
+
+        {# Menú "⋯ Más" #}
+        <div class="ms-auto btn-list">
+            <div class="dropdown">
+                <button
+                    class="btn btn-outline-secondary dropdown-toggle btn-sm"
+                    data-bs-toggle="dropdown">
+                    ⋯ Más
+                </button>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="/egresos/historial">📚 Historial del SAT</a>
+                    <a class="dropdown-item d-flex justify-content-between" href="/egresos/rechazados">
+                        ⚠️ Rechazados
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <form method="post" action="/egresos/reset" onsubmit="return confirmarReset(event)">
+                        <button type="submit" class="dropdown-item text-danger">🗑️ Reset Egresos</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" action="/egresos" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Desde</label>
+                <input type="date" class="form-control form-control-sm" name="desde" value="{{ filtros.desde }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Hasta</label>
+                <input type="date" class="form-control form-control-sm" name="hasta" value="{{ filtros.hasta }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Sucursal</label>
+                <select class="form-select form-select-sm" name="sucursal">
+                    <option value="">Todas</option>
+                    {% for s in sucursales %}
+                    <option value="{{ s }}" {% if s == filtros.sucursal %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Método</label>
+                <select class="form-select form-select-sm" name="metodo">
+                    <option value="">Todos</option>
+                    <option value="PUE" {% if filtros.metodo == 'PUE' %}selected{% endif %}>PUE</option>
+                    <option value="PPD" {% if filtros.metodo == 'PPD' %}selected{% endif %}>PPD</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Forma</label>
+                <select class="form-select form-select-sm" name="forma">
+                    <option value="">Todas</option>
+                    <option value="Efectivo" {% if filtros.forma == 'Efectivo' %}selected{% endif %}>Efectivo</option>
+                    <option value="TC" {% if filtros.forma == 'TC' %}selected{% endif %}>TC</option>
+                    <option value="TD" {% if filtros.forma == 'TD' %}selected{% endif %}>TD</option>
+                    <option value="Transferencia" {% if filtros.forma == 'Transferencia' %}selected{% endif %}>Transferencia</option>
+                </select>
+            </div>
+            <div class="col-auto ms-auto">
+                <button type="submit" class="btn btn-primary btn-sm">🔍 Filtrar</button>
+                <a href="/egresos" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabla -->
+<div class="card">
+    <div class="tabla-scroll">
+        <table class="table table-vcenter table-sm table-hover card-table table-striped">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Folio</th>
+                    <th>UUID</th>
+                    <th>Proveedor</th>
+                    <th>RFC</th>
+                    <th class="text-end">Total</th>
+                    <th>Sucursal</th>
+                    <th>Método</th>
+                    <th>Forma</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.fecha }}</td>
+                    <td>{{ r.folio }}</td>
+                    <td class="text-truncate" style="max-width: 130px;"><small class="text-muted">{{ r.uuid[:13] }}...</small></td>
+                    <td class="text-truncate" style="max-width: 200px;">{{ r.proveedor }}</td>
+                    <td>{{ r.rfc }}</td>
+                    <td class="text-end font-monospace">${{ "%.2f"|format(r.total) }}</td>
+                    <td>
+                        {% if r.sucursal == 'Animalia' %}
+                            <span class="badge bg-purple text-white">Animalia</span>
+                        {% else %}
+                            {{ r.sucursal }}
+                        {% endif %}
+                    </td>
+                    <td>{{ r.metodo_pago }}</td>
+                    <td>{{ r.forma_pago }}</td>
+                    <td class="text-end">
+                        {% if r.sucursal == 'Animalia' %}
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                onclick="cambiarSucursal('{{ r.uuid }}', 'Baalak')"
+                                title="Regresar a Baalak">
+                            🏢 → Baalak
+                        </button>
+                        {% else %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                onclick="cambiarSucursal('{{ r.uuid }}', 'Animalia')"
+                                title="Marcar como Animalia">
+                            🏢 Animalia
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="4" class="fw-bold">TOTAL</td>
+                    <td class="text-end font-monospace fw-bold">${{ "%.2f"|format(total) }}</td>
+                    <td colspan="5">
+                        <small>
+                            PUE: {{ n_pue }} ({{ "%.2f"|format(total_pue) }}) |
+                            PPD: {{ n_ppd }} ({{ "%.2f"|format(total_ppd) }})
+                        </small>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- ============================================================
+     MODAL: Descarga del SAT (incluye config e.firma adentro)
+     ============================================================ -->
+<dialog id="modal-descarga-sat" {% if job_activo %}data-job-id="{{ job_activo.id }}"{% endif %}>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">📥 Descargar facturas del SAT</h5>
+            <button type="button" class="btn-close btn-sm" onclick="cerrarModalDescarga()"></button>
+        </div>
+        <div class="modal-body">
+            <!-- Bloque de configuración (igual que Gmail en Ingresos) -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">
+                    Configuración de la e.firma:
+                    {% if configurado %}
+                        <span class="text-success">✓ Lista</span>
+                    {% else %}
+                        <span class="text-warning">⚠ Pendiente</span>
+                    {% endif %}
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="document.getElementById('modal-descarga-sat').close(); document.getElementById('modal-config-efirma').showModal();">
+                    ⚙️ Editar credenciales
+                </button>
+            </div>
+            <hr class="my-3">
+
+            {% if solicitud_pendiente and not job_activo %}
+            <div class="alert alert-info mb-3">
+                Hay una solicitud pendiente. Puedes retomarla o iniciar una nueva.
+            </div>
+            {% endif %}
+
+            <div id="form-solicitud">
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Desde</label>
+                        <input type="date" name="fecha_inicio" class="form-control" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Hasta</label>
+                        <input type="date" name="fecha_fin" class="form-control" required>
+                    </div>
+                </div>
+                <p class="text-muted small mb-0">
+                    El SAT puede tardar entre 5 y 30 minutos en procesar la solicitud.
+                    Puedes cerrar la pestaña y volver después.
+                </p>
+            </div>
+
+            <div id="progreso-sat" style="display:none;">
+                <div class="progress mb-2">
+                    <div id="barra-fill-sat" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                </div>
+                <p id="progreso-texto-sat" class="text-muted small"></p>
+                <pre id="progreso-log-sat" class="log-box"></pre>
+            </div>
+        </div>
+        <div class="modal-footer" id="footer-modal-sat">
+            {% if solicitud_pendiente and not job_activo %}
+            <button type="button" class="btn btn-info btn-sm" onclick="retomarSolicitud()">🔄 Retomar solicitud</button>
+            {% endif %}
+            <button type="button" id="btn-iniciar-sat" class="btn btn-primary btn-sm" onclick="iniciarDescargaSAT()"
+                    {% if not configurado %}disabled title="Configura e.firma primero"{% endif %}>
+                📥 Iniciar descarga
+            </button>
+        </div>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     MODAL: Configurar e.firma
+     ============================================================ -->
+<dialog id="modal-config-efirma">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">⚙️ Configuración de e.firma (SAT)</h5>
+            <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-config-efirma').close(); document.getElementById('modal-descarga-sat').showModal();"></button>
+        </div>
+        <form id="form-config-efirma" enctype="multipart/form-data">
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">RFC del receptor</label>
+                    <input type="text" name="rfc_receptor" class="form-control" required
+                           value="{{ cfg.rfc_receptor or '' }}" placeholder="XXX000000XXX"
+                           oninput="this.value = this.value.toUpperCase()">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Certificado (.cer)</label>
+                    <input type="file" name="certificado_cer" class="form-control" accept=".cer" {% if not cfg.certificado_cer %}required{% endif %}>
+                    {% if cfg.certificado_cer %}
+                    <small class="text-muted d-block mt-1">Archivo actual: {{ cfg.certificado_cer.split('/')[-1] }}</small>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Llave privada (.key)</label>
+                    <input type="file" name="certificado_key" class="form-control" accept=".key" {% if not cfg.certificado_key %}required{% endif %}>
+                    {% if cfg.certificado_key %}
+                    <small class="text-muted d-block mt-1">Archivo actual: {{ cfg.certificado_key.split('/')[-1] }}</small>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Contraseña de la e.firma</label>
+                    <input type="password" name="password_fiel" class="form-control" required
+                           value="{{ cfg.password_fiel or '' }}" placeholder="••••••••">
+                </div>
+                <div id="resultado-fiel" class="mt-2"></div>
+                <div class="alert alert-info py-2 mb-0 mt-3" style="font-size: 0.8rem;">
+                    <strong>Nota:</strong> La contraseña se guarda en el servidor.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="probarFiel()">
+                    🔑 Probar FIEL
+                </button>
+                <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     MODAL: ZIP mensual
+     ============================================================ -->
+<dialog id="modal-zip">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">📦 Descargar ZIP mensual</h5>
+            <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-zip').close()"></button>
+        </div>
+        <form method="get" action="/egresos/zip">
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Incluye los XMLs y los Excel (PUE + PPD) del mes seleccionado.</p>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Año</label>
+                        <input type="number" name="anio" class="form-control" required value="{{ anio_actual }}" min="2000" max="2100">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Mes</label>
+                        <select name="mes" class="form-select" required>
+                            {% for m in range(1, 13) %}
+                            <option value="{{ m }}" {% if m == mes_actual %}selected{% endif %}>{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Sucursal</label>
+                        <select name="sucursal" class="form-select" required>
+                            <option value="Baalak">Baalak</option>
+                            <option value="Animalia">Animalia</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-success btn-sm">📦 Descargar ZIP</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     MODAL: Reportes (árbol Año → Mes → Sucursal → PUE/PPD)
+     ============================================================ -->
+<dialog id="modal-reportes" style="max-width: 760px; width: 92vw;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">📊 Reportes disponibles</h5>
+            <button type="button" class="btn-close btn-sm"
+                    onclick="document.getElementById('modal-reportes').close()"></button>
+        </div>
+        <div class="modal-body" style="max-height: 70vh; overflow: auto;">
+            <div id="arbol-reportes">
+                <p class="text-muted small mb-2">
+                    Clic en <strong>Sucursal</strong> o <strong>PUE/PPD</strong> para aplicar ese filtro.
+                </p>
+                <div class="text-muted text-center py-4">Cargando...</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <span class="text-muted small me-auto" id="arbol-resumen"></span>
+        </div>
+    </div>
+</dialog>
+
+<!-- ============================================================
+     JS
+     ============================================================ -->
+<script>
+let pollingSat = null;
+
+function abrirModalDescarga() {
+    const modal = document.getElementById('modal-descarga-sat');
+    modal.showModal();
+
+    const jobId = modal.dataset.jobId;
+    if (jobId) {
+        iniciarPolling(jobId);
+    }
+}
+
+function cerrarModalDescarga() {
+    document.getElementById('modal-descarga-sat').close();
+}
+
+// ============================================================
+// Modal de Reportes (árbol jerárquico)
+// ============================================================
+const MESES_ES_REP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function fmtMonto(n) {
+    return (n || 0).toLocaleString('es-MX', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+async function abrirModalReportes() {
+    const modal = document.getElementById('modal-reportes');
+    const cont = document.getElementById('arbol-reportes');
+    const resumen = document.getElementById('arbol-resumen');
+
+    modal.showModal();
+    cont.innerHTML = '<div class="text-muted text-center py-4">Cargando...</div>';
+    resumen.textContent = '';
+
+    try {
+        const resp = await fetch('/egresos/arbol');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        const anios = Object.keys(data).filter(k => k !== '_total');
+        if (anios.length === 0) {
+            cont.innerHTML = '<div class="text-muted text-center py-4">No hay egresos registrados aún.</div>';
+            return;
+        }
+
+        cont.innerHTML = '';
+        const ul = document.createElement('ul');
+        ul.className = 'arbol-reportes';
+
+        anios.sort().reverse().forEach(anio => {
+            ul.appendChild(crearNodoAnio(anio, data[anio]));
+        });
+        cont.appendChild(ul);
+
+        const tGlobal = data._total || {n: 0, total: 0};
+        resumen.textContent = `Total general: ${tGlobal.n} facturas · $${fmtMonto(tGlobal.total)}`;
+
+    } catch (e) {
+        cont.innerHTML = `<div class="text-danger text-center py-4">Error al cargar reportes: ${e.message}</div>`;
+    }
+}
+
+function crearNodoAnio(anio, meses) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+
+    const t = meses._total || {n: 0, total: 0};
+    sum.innerHTML = `<strong>📅 ${anio}</strong>
+                     <span class="text-muted small ms-2">${t.n} facturas · $${fmtMonto(t.total)}</span>`;
+    det.appendChild(sum);
+
+    const ulMes = document.createElement('ul');
+    Object.keys(meses)
+        .filter(k => k !== '_total')
+        .sort()
+        .forEach(mes => {
+            ulMes.appendChild(crearNodoMes(anio, mes, meses[mes]));
+        });
+    det.appendChild(ulMes);
+    li.appendChild(det);
+    return li;
+}
+
+function crearNodoMes(anio, mes, sucursales) {
+    const li = document.createElement('li');
+    const det = document.createElement('details');
+    const sum = document.createElement('summary');
+
+    const t = sucursales._total || {n: 0, total: 0};
+    const nombreMes = MESES_ES_REP[parseInt(mes, 10) - 1] || mes;
+    sum.innerHTML = `<strong>📆 ${nombreMes}</strong>
+                     <span class="text-muted small ms-2">${t.n} facturas · $${fmtMonto(t.total)}</span>`;
+    det.appendChild(sum);
+
+    const ulSuc = document.createElement('ul');
+    Object.keys(sucursales)
+        .filter(k => k !== '_total')
+        .sort()
+        .forEach(suc => {
+            ulSuc.appendChild(crearNodoSucursal(anio, mes, suc, sucursales[suc]));
+        });
+    det.appendChild(ulSuc);
+    li.appendChild(det);
+    return li;
+}
+
+function crearNodoSucursal(anio, mes, sucursal, metodos) {
+    const li = document.createElement('li');
+
+    // --- Sucursal como botón (no details) ---
+    const btnSuc = document.createElement('button');
+    btnSuc.type = 'button';
+    btnSuc.className = 'nodo-sucursal-btn';
+    const t = metodos._total || {n: 0, total: 0};
+    const nombreSuc = sucursal === '_sin_sucursal' ? 'Sin sucursal' : sucursal;
+    btnSuc.innerHTML = `<strong>🏢 ${nombreSuc}</strong>
+                        <span class="text-muted small ms-2">${t.n} facturas · $${fmtMonto(t.total)}</span>`;
+    btnSuc.title = `Clic para ver toda la sucursal ${nombreSuc}`;
+    btnSuc.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        aplicarFiltroReporte(anio, mes, sucursal, null);
+    });
+    li.appendChild(btnSuc);
+
+    // --- PUE / PPD debajo, indentados ---
+    const ulMet = document.createElement('ul');
+    ulMet.className = 'arbol-metodos';
+    ['PUE', 'PPD'].forEach(metodo => {
+        const info = metodos[metodo] || {n: 0, total: 0};
+        const liMet = document.createElement('li');
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'nodo-hoja' + (info.n === 0 ? ' nodo-vacio' : '');
+        btn.disabled = info.n === 0;
+        btn.innerHTML = `<strong>${metodo}</strong>
+                         <span class="text-muted small ms-2">${info.n} facturas · $${fmtMonto(info.total)}</span>`;
+        btn.title = info.n > 0
+            ? `Clic para filtrar ${metodo}`
+            : 'Sin facturas en este método';
+        btn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (info.n === 0) return;
+            aplicarFiltroReporte(anio, mes, sucursal, metodo);
+        });
+
+        liMet.appendChild(btn);
+        ulMet.appendChild(liMet);
+    });
+    li.appendChild(ulMet);
+
+    return li;
+}
+
+function aplicarFiltroReporte(anio, mes, sucursal, metodo) {
+    const params = new URLSearchParams();
+
+    // Rango de fechas
+    if (anio && mes) {
+        const mesStr = String(mes).padStart(2, '0');
+        const ultimoDia = new Date(parseInt(anio, 10), parseInt(mes, 10), 0).getDate();
+        params.set('desde', `${anio}-${mesStr}-01`);
+        params.set('hasta', `${anio}-${mesStr}-${String(ultimoDia).padStart(2, '0')}`);
+    } else if (anio) {
+        params.set('desde', `${anio}-01-01`);
+        params.set('hasta', `${anio}-12-31`);
+    }
+
+    // Sucursal
+    if (sucursal && sucursal !== '_sin_sucursal') {
+        params.set('sucursal', sucursal);
+    }
+
+    // Método
+    if (metodo) {
+        params.set('metodo', metodo);
+    }
+
+    document.getElementById('modal-reportes').close();
+    window.location = '/egresos?' + params.toString();
+}
+
+// --- Config e.firma ---
+document.getElementById('form-config-efirma').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = this.querySelector('button[type="submit"]');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    try {
+        const fd = new FormData(this);
+        const resp = await fetch('/egresos/config', { method: 'POST', body: fd });
+        if (resp.ok) {
+            // Cerrar config y reabrir descarga (sin recargar)
+            document.getElementById('modal-config-efirma').close();
+            document.getElementById('modal-descarga-sat').showModal();
+            // Habilitar botón de iniciar descarga si estaba deshabilitado
+            const btnIniciar = document.getElementById('btn-iniciar-sat');
+            if (btnIniciar) {
+                btnIniciar.disabled = false;
+                btnIniciar.removeAttribute('title');
+            }
+            // Actualizar etiqueta de estado
+            const label = document.querySelector('#modal-descarga-sat .text-muted.small');
+            if (label) {
+                label.innerHTML = 'Configuración de la e.firma: <span class="text-success">✓ Lista</span>';
+            }
+        } else {
+            alert('Error al guardar la configuración');
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+});
+
+async function probarFiel() {
+    const form = document.getElementById('form-config-efirma');
+    const fd = new FormData(form);
+    const resultado = document.getElementById('resultado-fiel');
+    resultado.innerHTML = '<span class="text-muted">Probando...</span>';
+
+    try {
+        const resp = await fetch('/egresos/probar-fiel', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (data.ok) {
+            resultado.innerHTML = `<div class="alert alert-success py-2 mb-0">✅ ${data.mensaje}</div>`;
+        } else {
+            resultado.innerHTML = `<div class="alert alert-danger py-2 mb-0">❌ ${data.mensaje}</div>`;
+        }
+    } catch (err) {
+        resultado.innerHTML = `<div class="alert alert-danger py-2 mb-0">Error: ${err.message}</div>`;
+    }
+}
+
+// --- Descarga SAT ---
+async function iniciarDescargaSAT() {
+    const inicio = document.querySelector('input[name="fecha_inicio"]').value;
+    const fin = document.querySelector('input[name="fecha_fin"]').value;
+
+    if (!inicio || !fin) {
+        alert('Selecciona ambas fechas');
+        return;
+    }
+
+    const btn = document.getElementById('btn-iniciar-sat');
+    btn.disabled = true;
+    document.getElementById('form-solicitud').style.display = 'none';
+    document.getElementById('progreso-sat').style.display = 'block';
+
+    const fd = new URLSearchParams();
+    fd.append('fecha_inicio', inicio);
+    fd.append('fecha_fin', fin);
+
+    try {
+        const resp = await fetch('/egresos/solicitar', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: fd
+        });
+        const data = await resp.json();
+        if (data.job_id) {
+            iniciarPolling(data.job_id);
+        } else {
+            alert('Error: ' + (data.error || 'No se pudo iniciar'));
+            btn.disabled = false;
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+        btn.disabled = false;
+    }
+}
+
+async function retomarSolicitud() {
+    const btn = document.getElementById('btn-iniciar-sat');
+    btn.disabled = true;
+    document.getElementById('form-solicitud').style.display = 'none';
+    document.getElementById('progreso-sat').style.display = 'block';
+
+    try {
+        const resp = await fetch('/egresos/retomar', { method: 'POST' });
+        const data = await resp.json();
+        if (data.job_id) {
+            iniciarPolling(data.job_id);
+        } else {
+            alert('Error: ' + (data.error || 'No se pudo retomar'));
+            btn.disabled = false;
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+        btn.disabled = false;
+    }
+}
+
+function iniciarPolling(jobId) {
+    document.getElementById('form-solicitud').style.display = 'none';
+    document.getElementById('progreso-sat').style.display = 'block';
+
+    if (pollingSat) clearInterval(pollingSat);
+    let vimosProgreso = false;
+
+    const consultar = async () => {
+        try {
+            const resp = await fetch('/egresos/estado-solicitud/' + jobId);
+            if (!resp.ok) {
+                const texto = document.getElementById('progreso-texto-sat');
+                texto.textContent = 'El job ya no existe en memoria. Puedes reintentar o revisar el estado del SAT.';
+                document.getElementById('barra-fill-sat').style.width = '100%';
+                document.getElementById('barra-fill-sat').classList.remove('progress-bar-animated');
+                document.getElementById('barra-fill-sat').classList.add('bg-secondary');
+                if (pollingSat) clearInterval(pollingSat);
+                pollingSat = null;
+                return;
+            }
+            const job = await resp.json();
+
+            const fill = document.getElementById('barra-fill-sat');
+            const texto = document.getElementById('progreso-texto-sat');
+            const logBox = document.getElementById('progreso-log-sat');
+
+            fill.style.width = (job.progreso || 0) + '%';
+            const msgs = job.mensajes || [];
+            if (msgs.length > 0) {
+                texto.textContent = msgs[msgs.length - 1];
+                logBox.textContent = msgs.join('\n');
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+
+            const enCurso = !['ok', 'error', 'cancelado'].includes(job.estado);
+            if (enCurso) vimosProgreso = true;
+
+            if (!enCurso) {
+                if (pollingSat) clearInterval(pollingSat);
+                pollingSat = null;
+
+                if (job.estado === 'ok' && job.resultado) {
+                    texto.textContent = '✅ ' + (job.resultado.resumen || 'Completado');
+                    fill.classList.remove('progress-bar-animated');
+                    fill.classList.add('bg-success');
+                    fill.style.width = '100%';
+                    if (vimosProgreso) {
+                        setTimeout(() => {
+                            window.location.href = '/egresos?resumen=' +
+                                encodeURIComponent(job.resultado.resumen);
+                        }, 3000);
+                    }
+                } else if (job.estado === 'error') {
+                    texto.textContent = '❌ Error: revisa el log';
+                    fill.classList.remove('progress-bar-animated');
+                    fill.classList.add('bg-danger');
+                    fill.style.width = '100%';
+                } else if (job.estado === 'cancelado') {
+                    texto.textContent = '⏹️ Cancelado';
+                    fill.classList.remove('progress-bar-animated');
+                    fill.classList.add('bg-secondary');
+                    fill.style.width = '100%';
+                }
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    consultar();
+    pollingSat = setInterval(consultar, 5000);
+}
+
+// --- Marcar Animalia - Baalak ---
+async function cambiarSucursal(uuid, sucursalNueva) {
+    const mensaje = sucursalNueva === 'Animalia'
+        ? '¿Marcar el proveedor como Animalia? Se guardará para futuras descargas.'
+        : '¿Regresar la factura a Baalak? Se quitará de la lista de Animalia.';
+
+    if (!confirm(mensaje)) return;
+
+    try {
+        const fd = new URLSearchParams();
+        fd.append('sucursal_nueva', sucursalNueva);
+        const resp = await fetch('/egresos/cambiar-sucursal/' + uuid, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: fd,
+        });
+        if (resp.ok) {
+            window.location.reload();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            alert('Error: ' + (data.error || 'No se pudo cambiar'));
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+// --- Reset ---
+function confirmarReset(event) {
+    if (!confirm('⚠️ RESET TOTAL DE EGRESOS\n\nSe van a borrar:\n• Todos los registros\n• Todos los XMLs\n• Todos los logs\n\n¿Continuar?')) {
+        event.preventDefault();
+        return false;
+    }
+    return confirm('ÚLTIMA CONFIRMACIÓN\n\n¿Estás SEGURO?\n\nEsta acción NO se puede deshacer.');
+}
+</script>
+{% endblock %}

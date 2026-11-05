@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header mb-3">
+    <h2 class="page-title">VetSuite Web</h2>
+</div>
+
+{% if sin_acceso %}
+<div class="alert alert-warning" role="alert">
+    <h4 class="alert-title">Sin acceso</h4>
+    <p class="mb-0">
+        Tu IP (<strong>{{ ip }}</strong>) no tiene permiso para acceder a ningún módulo.
+        Contacta al administrador del sistema.
+    </p>
+</div>
+{% else %}
+<p class="text-secondary">Selecciona un módulo en el menú lateral.</p>
+{% endif %}
+{% endblock %}

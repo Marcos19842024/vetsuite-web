@@ -1,0 +1,90 @@
+# ============================================================
+# Base de datos
+# ============================================================
+vetsuite.db
+vetsuite.db-journal
+vetsuite.db-wal
+vetsuite.db-shm
+*.db
+*.sqlite
+
+# ============================================================
+# Uploads (todo)
+# ============================================================
+uploads/
+
+# ============================================================
+# Configuración sensible
+# ============================================================
+gmail_config.json
+egresos_config.json
+recordatorios_config.json
+catalogo_qvet.json
+categorias_manuales.json
+proveedores_sucursal.json
+solicitud_sat_activa.json
+jobs_state.json
+servicios_externos_config.json
+ip_permisos.json
+
+# ============================================================
+# Excel de trabajo (el original del cliente)
+# ============================================================
+Inicineraciones.xlsx
+*.xls
+*.xlsx
+!uploads/cortes/plantilla_semanal.xlsx
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# Logs y temporales
+# ============================================================
+*.log
+logs/
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# ============================================================
+# Certificados (e.firma)
+# ============================================================
+*.cer
+*.key
+*.pem
+
+# ============================================================
+# Sistema operativo
+# ============================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+# IDE
+# ============================================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================
+# Archivos huérfanos a limpiar
+# ============================================================
+iicio.txt
