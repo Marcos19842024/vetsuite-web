@@ -315,7 +315,7 @@ async def exportar_excel():
 
 @router.post("/reset")
 async def reset():
-    """Borra TODO lo del módulo: cachés, historial, reportes. NO toca Ingresos/Egresos."""
+    """Borra TODO lo del módulo: cachés, historial, reportes. NO toca otros módulos."""
     for p in (AGENDA_CACHE, VACUNAS_CACHE):
         try:
             if p.exists():
@@ -336,7 +336,8 @@ async def reset():
                 f.unlink()
             except Exception:
                 pass
-    return JSONResponse({"ok": True})
+
+    return RedirectResponse(url="/recordatorios", status_code=303)
 
 
 # ------------------------------------------------------------

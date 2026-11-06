@@ -541,7 +541,7 @@ document.getElementById('form-config-gmail')?.addEventListener('submit', async f
 
 // --- Reset ---
 function confirmarReset(event) {
-    if (!confirm('⚠️ RESET TOTAL DE INGRESOS\n\nSe van a borrar:\n• Todos los registros\n• Todos los archivos XML/PDF\n• Logs y temporales\n• Caché de correos\n\n¿Continuar?')) {
+    if (!confirm('⚠️ RESET TOTAL DE INGRESOS\n\nSe van a borrar:\n• Todos los registros\n• Todos los archivos XML/PDF\n• Logs y temporales\n• Caché de correos\n\nNo se toca otros módulos.\n\n¿Continuar?')) {
         event.preventDefault();
         return false;
     }

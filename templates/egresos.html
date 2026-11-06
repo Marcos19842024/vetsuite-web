@@ -782,7 +782,7 @@ async function cambiarSucursal(uuid, sucursalNueva) {
 
 // --- Reset ---
 function confirmarReset(event) {
-    if (!confirm('⚠️ RESET TOTAL DE EGRESOS\n\nSe van a borrar:\n• Todos los registros\n• Todos los XMLs\n• Todos los logs\n\n¿Continuar?')) {
+    if (!confirm('⚠️ RESET TOTAL DE EGRESOS\n\nSe van a borrar:\n• Todos los registros\n• Todos los XMLs\n• Todos los logs\n\nNo se toca otros módulos.\n\n¿Continuar?')) {
         event.preventDefault();
         return false;
     }

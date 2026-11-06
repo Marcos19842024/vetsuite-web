@@ -44,31 +44,9 @@
         </div>
 
         <div class="ms-auto btn-list">
-            <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalReset">
-                🧹 Reset
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Stats -->
-<div class="row g-2 mb-3">
-    <div class="col-md-6">
-        <div class="card card-sm">
-            <div class="card-body">
-                <div class="text-secondary">📅 Citas</div>
-                <div class="h3 m-0">{{ stats.citas_total }}</div>
-                <small class="text-secondary">Enviados: {{ stats.citas_enviados }} | Pendientes: {{ stats.citas_total - stats.citas_enviados }}</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card card-sm">
-            <div class="card-body">
-                <div class="text-secondary">💉 Vacunas</div>
-                <div class="h3 m-0">{{ stats.vacunas_total }}</div>
-                <small class="text-secondary">Enviados: {{ stats.vacunas_enviados }} | Pendientes: {{ stats.vacunas_total - stats.vacunas_enviados }}</small>
-            </div>
+            <form method="post" action="/recordatorios/reset" onsubmit="return confirmarResetYLimpiar(event)" class="d-inline">
+            <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Reset</button>
+        </form>
         </div>
     </div>
 </div>
@@ -79,14 +57,14 @@
         <ul class="nav nav-tabs" role="tablist">
             <li class="nav-item">
                 <button class="nav-link active" id="tab-btn-citas" data-bs-toggle="tab"
-                        data-bs-target="#tab-citas" type="button" role="tab">
-                    📅 Citas ({{ citas|length }})
+                    data-bs-target="#tab-citas" type="button" role="tab">
+                    📅 Citas ({{ citas|length }}) | Enviados: {{ stats.citas_enviados }} | Pendientes: {{ stats.citas_total - stats.citas_enviados }}
                 </button>
             </li>
             <li class="nav-item">
                 <button class="nav-link" id="tab-btn-vacunas" data-bs-toggle="tab"
-                        data-bs-target="#tab-vacunas" type="button" role="tab">
-                    💉 Vacunas ({{ vacunas|length }})
+                    data-bs-target="#tab-vacunas" type="button" role="tab">
+                    💉 Vacunas ({{ vacunas|length }}) | Enviados: {{ stats.vacunas_enviados }} | Pendientes: {{ stats.vacunas_total - stats.vacunas_enviados }}
                 </button>
             </li>
         </ul>
@@ -210,22 +188,6 @@
     </div>
 </div>
 
-<!-- Modal Reset (Bootstrap) -->
-<div class="modal modal-blur fade" id="modalReset" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
-        <div class="modal-content">
-            <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
-            <div class="modal-body text-center">
-                <h3>¿Borrar todo?</h3>
-                <p class="text-secondary">Se eliminarán clientes importados, historial de envíos y reportes. No se toca Ingresos ni Egresos.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger btn-sm" id="btn-confirmar-reset">Sí, borrar</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Modal Ver Mensaje (propio, NO depende de Bootstrap JS) -->
 <div class="modal-propio" id="modalMensaje">
     <div class="caja">
@@ -328,18 +290,6 @@
             } catch (err) {
                 out.innerHTML = `<div class="text-danger">Error: ${err}</div>`;
             }
-        });
-    }
-
-    // ============================================================
-    // Reset
-    // ============================================================
-    const btnReset = document.getElementById('btn-confirmar-reset');
-    if (btnReset) {
-        btnReset.addEventListener('click', async () => {
-            await fetch('/recordatorios/reset', {method:'POST'});
-            localStorage.removeItem(LS_KEY);
-            window.location.reload();
         });
     }
 
@@ -454,5 +404,23 @@
 
     actualizarBoton();
 })();
+
+// ============================================================
+    // Reset
+    // ============================================================
+    function confirmarResetYLimpiar(event) {
+        if (!confirm('⚠️ RESET TOTAL DE RECORDATORIOS\n\nSe van a borrar:\n• Todos los clientes importados (citas y vacunas)\n• Historial de envíos\n• Reportes exportados\n• La selección guardada en localStorage\n\nNo se toca otros módulos.\n\n¿Continuar?')) {
+            event.preventDefault();
+            return false;
+        }
+        if (!confirm('ÚLTIMA CONFIRMACIÓN\n\n¿Estás SEGURO?\n\nEsta acción NO se puede deshacer.')) {
+            event.preventDefault();
+            return false;
+        }
+        // Limpiar localStorage antes de enviar el form
+        localStorage.removeItem(LS_KEY);
+        window.location.reload();
+        return true;
+    }
 </script>
 {% endblock %}

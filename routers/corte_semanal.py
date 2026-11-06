@@ -8,10 +8,12 @@ from db import get_conn
 from core.corte_semanal import expr
 from core.corte_semanal import semanas
 from core.corte_semanal.excel_corte import generar_excel, nombre_archivo
-
+from templates_shared import templates
+import json
 
 router = APIRouter(prefix="/corte_semanal", tags=["corte semanal"])
-from templates_shared import templates
+
+RUTA_CORTES = Path(__file__).resolve().parents[1] / "uploads" / "corte_semanal"
 
 # Columnas capturables (todas menos las calculadas y observaciones)
 CAMPOS_CAPTURA = [
@@ -38,8 +40,75 @@ POR_COBRAR_KEYS = [
     "clientes_pension", "tratamiento", "transporte",
 ]
 
+# Helpers de observaciones generadas
+EGRESOS_CAMPOS = {
+    "nomina_efectivo", "gasolina", "hemograma", "patologia",
+    "varios", "servicios", "capacitacion",
+}
 
-RUTA_CORTES = Path(__file__).resolve().parents[1] / "uploads" / "corte_semanal"
+def _fmt_monto(v: float) -> str:
+    return f"${v:,.2f}"
+
+
+def _formatear_obs_celda(campo: str, subcampo: str | None,
+                         valor_str: str, obs_texto: str) -> str:
+    """Genera el texto de observación para una celda editada.
+    Formato:
+      - Egreso:                      'Gasto de $X: <texto>'
+      - Por cobrar / colaboradores:  'Deuda de $X: <texto>'
+    Si no hay texto, devuelve '' (no se anexa nada).
+    """
+    texto = (obs_texto or "").strip()
+    if not texto:
+        return ""
+
+    monto = expr.evaluar_expr(valor_str or "")
+    monto_fmt = _fmt_monto(monto)
+
+    if campo == "por_cobrar" and subcampo == "colaboradores":
+        return f"Deuda de {monto_fmt}: {texto}"
+
+    if campo in EGRESOS_CAMPOS:
+        return f"Gasto de {monto_fmt}: {texto}"
+
+    return ""
+
+
+def _regenerar_observaciones(obs_manual: str, obs_celdas: dict,
+                             dia: dict) -> str:
+    """Combina la observación manual + las generadas por celda."""
+    lineas = []
+    if (obs_manual or "").strip():
+        lineas.append(obs_manual.strip())
+    for key, texto in obs_celdas.items():
+        if not texto:
+            continue
+        # key = "campo" o "por_cobrar:colaboradores"
+        if ":" in key:
+            campo, sub = key.split(":", 1)
+        else:
+            campo, sub = key, None
+        # valor actual de la celda
+        if campo == "por_cobrar" and sub:
+            valor = (dia.get("por_cobrar") or {}).get(sub, "")
+        else:
+            valor = dia.get(campo, "")
+        generado = _formatear_obs_celda(campo, sub, valor, texto)
+        if generado:
+            lineas.append(generado)
+    return "\n".join(lineas)
+
+
+def _cargar_obs_celdas(row) -> dict:
+    """Lee obs_celdas_json de una fila, tolerante a None/JSON roto."""
+    try:
+        return json.loads(row["obs_celdas_json"] or "{}")
+    except Exception:
+        return {}
+
+
+def _obs_manual_de(obs_celdas: dict) -> str:
+    return (obs_celdas.get("__manual__") or "").strip()
 
 
 def _no_store(payload, status=200):
@@ -54,6 +123,7 @@ def _fila_vacia(sucursal: str, fecha: str) -> dict:
     d = {k: "" for k in CAMPOS_CAPTURA}
     d["por_cobrar"] = {k: "" for k in POR_COBRAR_KEYS} # type: ignore
     d["observaciones"] = ""
+    d["obs_celdas"] = {} # type: ignore
     d["sucursal"] = sucursal
     d["fecha"] = fecha
     return d
@@ -81,6 +151,7 @@ def _cargar_semana(conn, anio: int, semana: int) -> dict:
         for k in CAMPOS_CAPTURA:
             datos[s][f][k] = r.get(k) or ""
         datos[s][f]["observaciones"] = r.get("observaciones") or ""
+        datos[s][f]["obs_celdas"] = _cargar_obs_celdas(r)
         try:
             import json as _json
             datos[s][f]["por_cobrar"] = _json.loads(r.get("por_cobrar_json") or "{}")
@@ -208,6 +279,7 @@ def datos(anio: int, semana: int):
         for f in data["dias"]:
             d = data["datos"][s][f]
             row = dict(d)
+            row["obs_celdas"] = d.get("obs_celdas", {})   # ===== NUEVO =====
             row["_totales"] = {}
             for k in CAMPOS_CAPTURA:
                 row["_totales"][k] = expr.fmt_monto(expr.evaluar_expr(d.get(k)))
@@ -239,6 +311,8 @@ async def actualizar(request: Request):
     sucursal = body.get("sucursal")
     campo = body.get("campo")
     valor = body.get("valor", "")
+    subcampo = body.get("subcampo")
+    obs_texto = (body.get("obs") or "").strip()
 
     if sucursal not in SUCURSALES:
         raise HTTPException(400, "sucursal inválida")
@@ -247,13 +321,11 @@ async def actualizar(request: Request):
     if not fecha:
         raise HTTPException(400, "fecha requerida")
 
-    # Validar formato de fecha
     try:
         date.fromisoformat(fecha)
     except ValueError:
         raise HTTPException(400, "fecha inválida")
 
-    # Validar que la fecha pertenezca a una semana
     f = date.fromisoformat(fecha)
     anio, semana = semanas.semana_de_fecha(f)
 
@@ -263,92 +335,142 @@ async def actualizar(request: Request):
         if meta["estado"] == "cerrada":
             raise HTTPException(409, "semana cerrada")
 
-        # Asegurar fila
         conn.execute(
             "INSERT OR IGNORE INTO cortes_diarios (fecha, sucursal) VALUES (?, ?)",
             (fecha, sucursal),
         )
+        row = conn.execute(
+            "SELECT * FROM cortes_diarios WHERE fecha=? AND sucursal=?",
+            (fecha, sucursal),
+        ).fetchone()
+        obs_celdas = _cargar_obs_celdas(row)      # ===== NUEVO =====
 
+        # ---------- Caso 1: observación manual del día ----------
+        if campo == "observaciones":
+            obs_celdas["__manual__"] = str(valor or "")
+            # Necesitamos el día completo para regenerar (con los valores actuales)
+            dia_tmp = _fila_vacia(sucursal, fecha)
+            for k in CAMPOS_CAPTURA:
+                dia_tmp[k] = row[k] or ""
+            try:
+                dia_tmp["por_cobrar"] = json.loads(row["por_cobrar_json"] or "{}")
+            except Exception:
+                dia_tmp["por_cobrar"] = {}
+            nuevas_obs = _regenerar_observaciones(
+                _obs_manual_de(obs_celdas), obs_celdas, dia_tmp
+            )
+            conn.execute(
+                "UPDATE cortes_diarios SET obs_celdas_json=?, observaciones=?, "
+                "actualizado_en=CURRENT_TIMESTAMP WHERE fecha=? AND sucursal=?",
+                (json.dumps(obs_celdas, ensure_ascii=False), nuevas_obs,
+                 fecha, sucursal),
+            )
+            conn.commit()
+            return _respuesta_actualizar(conn, anio, semana, campo, valor)
+
+        # ---------- Caso 2: por_cobrar ----------
         if campo == "por_cobrar":
-            # body debe traer 'subcampo'
-            subcampo = body.get("subcampo")
             if subcampo not in POR_COBRAR_KEYS:
                 raise HTTPException(400, "subcampo inválido")
-            row = conn.execute(
-                "SELECT por_cobrar_json FROM cortes_diarios WHERE fecha=? AND sucursal=?",
-                (fecha, sucursal),
-            ).fetchone()
-            import json as _json
             try:
-                pc = _json.loads(row["por_cobrar_json"] or "{}")
+                pc = json.loads(row["por_cobrar_json"] or "{}")
             except Exception:
                 pc = {}
             pc[subcampo] = str(valor)
             conn.execute(
-                "UPDATE cortes_diarios SET por_cobrar_json=?, actualizado_en=CURRENT_TIMESTAMP "
-                "WHERE fecha=? AND sucursal=?",
-                (_json.dumps(pc, ensure_ascii=False), fecha, sucursal),
+                "UPDATE cortes_diarios SET por_cobrar_json=?, "
+                "actualizado_en=CURRENT_TIMESTAMP WHERE fecha=? AND sucursal=?",
+                (json.dumps(pc, ensure_ascii=False), fecha, sucursal),
             )
-        elif campo == "observaciones":
-            conn.execute(
-                "UPDATE cortes_diarios SET observaciones=?, actualizado_en=CURRENT_TIMESTAMP "
-                "WHERE fecha=? AND sucursal=?",
-                (str(valor), fecha, sucursal),
-            )
+
+        # ---------- Caso 3: campo normal de captura ----------
         else:
             conn.execute(
-                f"UPDATE cortes_diarios SET {campo}=?, actualizado_en=CURRENT_TIMESTAMP "
-                f"WHERE fecha=? AND sucursal=?",
+                f"UPDATE cortes_diarios SET {campo}=?, "
+                f"actualizado_en=CURRENT_TIMESTAMP WHERE fecha=? AND sucursal=?",
                 (str(valor), fecha, sucursal),
             )
+
+        # ---------- NUEVO: persistir obs de la celda (si aplica) ----------
+        aplica_obs = (campo in EGRESOS_CAMPOS) or \
+                     (campo == "por_cobrar" and subcampo == "colaboradores")
+        if aplica_obs:
+            key = f"{campo}:{subcampo}" if subcampo else campo
+            if obs_texto:
+                obs_celdas[key] = obs_texto
+            else:
+                obs_celdas.pop(key, None)
+
+        # Regenerar observaciones del día con los valores YA actualizados
+        # Releer la fila para tener los valores frescos
+        row2 = conn.execute(
+            "SELECT * FROM cortes_diarios WHERE fecha=? AND sucursal=?",
+            (fecha, sucursal),
+        ).fetchone()
+        dia_actual = _fila_vacia(sucursal, fecha)
+        for k in CAMPOS_CAPTURA:
+            dia_actual[k] = row2[k] or ""
+        try:
+            dia_actual["por_cobrar"] = json.loads(row2["por_cobrar_json"] or "{}")
+        except Exception:
+            dia_actual["por_cobrar"] = {}
+
+        nuevas_obs = _regenerar_observaciones(
+            _obs_manual_de(obs_celdas), obs_celdas, dia_actual
+        )
+        conn.execute(
+            "UPDATE cortes_diarios SET obs_celdas_json=?, observaciones=?, "
+            "actualizado_en=CURRENT_TIMESTAMP WHERE fecha=? AND sucursal=?",
+            (json.dumps(obs_celdas, ensure_ascii=False), nuevas_obs,
+             fecha, sucursal),
+        )
         conn.commit()
 
-        # Devolver totales frescos de la semana
-        data = _cargar_semana(conn, anio, semana)
-        totales = _calcular_totales(data["meta"], data["dias"], data["datos"])
+        return _respuesta_actualizar(conn, anio, semana, campo, valor)
 
-        # Total de la celda que acaba de cambiar
-        total_celda = expr.fmt_monto(expr.evaluar_expr(valor)) if campo in CAMPOS_CAPTURA \
-            or campo == "por_cobrar" else ""
-
-        # Devolver totales frescos de la semana
-        data = _cargar_semana(conn, anio, semana)
-        totales = _calcular_totales(data["meta"], data["dias"], data["datos"])
-
-        # Enriquecer datos con _totales por celda (igual que /corte/datos)
-        out_datos = {}
-        for s in SUCURSALES:
-            out_datos[s] = {}
-            for f in data["dias"]:
-                d = data["datos"][s][f]
-                row = dict(d)
-                row["_totales"] = {}
-                for k in CAMPOS_CAPTURA:
-                    row["_totales"][k] = expr.fmt_monto(expr.evaluar_expr(d.get(k)))
-                dep = expr.evaluar_expr(d.get("efectivo_depositado"))
-                egr = sum(expr.evaluar_expr(d.get(k)) for k in [
-                    "nomina_efectivo", "gasolina", "hemograma", "patologia",
-                    "varios", "servicios", "capacitacion",
-                ])
-                row["_totales"]["efectivo_cobrado"] = expr.fmt_monto(dep + egr)
-                for k in POR_COBRAR_KEYS:
-                    row["_totales"][k] = expr.fmt_monto(
-                        expr.evaluar_expr(d["por_cobrar"].get(k))
-                    )
-                out_datos[s][f] = row
-
-        total_celda = expr.fmt_monto(expr.evaluar_expr(valor)) if campo in CAMPOS_CAPTURA \
-            or campo == "por_cobrar" else ""
-
-        return _no_store({
-            "ok": True,
-            "total_celda": total_celda,
-            "totales": totales,
-            "datos": out_datos,   # <-- nuevo
-            "dias": data["dias"], # <-- nuevo
-        })
     finally:
         conn.close()
+
+
+def _respuesta_actualizar(conn, anio: int, semana: int, campo: str, valor: str):
+    """Construye la respuesta de /actualizar (mismo formato que antes)."""
+    data = _cargar_semana(conn, anio, semana)
+    totales = _calcular_totales(data["meta"], data["dias"], data["datos"])
+
+    out_datos = {}
+    for s in SUCURSALES:
+        out_datos[s] = {}
+        for f in data["dias"]:
+            d = data["datos"][s][f]
+            row = dict(d)
+            row["obs_celdas"] = d.get("obs_celdas", {})   # ===== NUEVO =====
+            row["_totales"] = {}
+            for k in CAMPOS_CAPTURA:
+                row["_totales"][k] = expr.fmt_monto(expr.evaluar_expr(d.get(k)))
+            dep = expr.evaluar_expr(d.get("efectivo_depositado"))
+            egr = sum(expr.evaluar_expr(d.get(k)) for k in [
+                "nomina_efectivo", "gasolina", "hemograma", "patologia",
+                "varios", "servicios", "capacitacion",
+            ])
+            row["_totales"]["efectivo_cobrado"] = expr.fmt_monto(dep + egr)
+            for k in POR_COBRAR_KEYS:
+                row["_totales"][k] = expr.fmt_monto(
+                    expr.evaluar_expr(d["por_cobrar"].get(k))
+                )
+            out_datos[s][f] = row
+
+    if campo in CAMPOS_CAPTURA or campo == "por_cobrar":
+        total_celda = expr.fmt_monto(expr.evaluar_expr(valor))
+    else:
+        total_celda = ""
+
+    return _no_store({
+        "ok": True,
+        "total_celda": total_celda,
+        "totales": totales,
+        "datos": out_datos,
+        "dias": data["dias"],
+    })
 
 
 @router.get("/excel")

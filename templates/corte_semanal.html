@@ -12,7 +12,7 @@
         <span
           id="estado-badge"
           style="font-size: .85rem; margin-left: .75rem;"
-          class="badge {% if meta.estado == 'cerrada' %}bg-secondary-lt text-secondary{% else %}bg-success-lt text-success{% endif %}">
+          class="badge {% if meta.estado == 'cerrada' %}bg-danger-lt text-danger{% else %}bg-success-lt text-success{% endif %}">
           {% if meta.estado == 'cerrada' %}🔐 Cerrada{% else %}🔓 Abierta{% endif %}
         </span>
       </h2>
@@ -296,9 +296,14 @@
               <tr>
                 <td class="corte-concepto-col" style="width:150px">{{ DIAS_NOMBRE[i] }} {{ dias[i][5:] }}</td>
                 <td>
-                  <input type="text" class="corte-obs"
-                        data-fecha="{{ dias[i] }}" data-sucursal="{{ s }}" data-campo="observaciones"
-                        placeholder="Sin observaciones">
+                  <textarea
+                    class="corte-obs form-control form-control-sm"
+                    data-fecha="{{ dias[i] }}"
+                    data-sucursal="{{ s }}"
+                    data-campo="observaciones"
+                    rows="1"
+                    placeholder="Sin observaciones">
+                  </textarea>
                 </td>
               </tr>
               {% endfor %}
@@ -388,8 +393,12 @@ window.CORTE = {
             if (span) span.textContent = fmt(evalExpr(valorStr));
           });
 
-        const obs = cont.querySelector(`input.corte-obs[data-fecha="${f}"][data-sucursal="${s}"]`);
+        const obs = cont.querySelector(`textarea.corte-obs[data-fecha="${f}"][data-sucursal="${s}"]`);
         if (obs && document.activeElement !== obs) obs.value = d.observaciones || '';
+        if (obs) {
+          obs.style.height = 'auto';
+          obs.style.height = obs.scrollHeight + 'px';
+        }
       }
     }
     pintarTodo(data);
@@ -493,10 +502,8 @@ window.CORTE = {
     actualizarResumenSucursal(data);
   }
 
-  function guardarRaw({ fecha, sucursal, campo, subcampo, valor }) {
-    const payload = { fecha, sucursal, campo, valor };
-    if (subcampo) payload.subcampo = subcampo;
-
+  function guardarRaw(payload) {
+    // payload ya trae { fecha, sucursal, campo, [subcampo], valor, [obs] }
     return fetch('/corte_semanal/actualizar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -513,12 +520,11 @@ window.CORTE = {
           return null;
         }
         const data = await r.json();
-
         if (data.datos && data.totales) {
-          window.__corteData = data;      // ← guardar para el tab switch
-          pintarTodo(data);               // ← repintar todo
+          window.__corteData = data;
+          pintar(data);          // ← repintar todo (incluye obs del día)
         } else {
-          cargar();                       // ← fallback si el backend no devolvió datos
+          cargar();
         }
         return data;
       })
@@ -616,12 +622,18 @@ window.CORTE = {
 
     celdaActiva = { td, fecha, sucursal, campo, subcampo };
 
-    // ⚠️ Capturar los elementos AQUÍ, no al inicio del IIFE
     const modal       = document.getElementById('modal-celda');
     const modalInput  = document.getElementById('modal-celda-input');
     const modalTotal  = document.getElementById('modal-celda-total');
     const modalTitulo = document.getElementById('modal-celda-titulo');
     const modalAyuda  = document.getElementById('modal-celda-ayuda');
+
+    // ===== NUEVO: elementos de obs =====
+    const modalObsWrap  = document.getElementById('modal-celda-obs-wrap');
+    const modalObs      = document.getElementById('modal-celda-obs');
+    const modalObsLabel = document.getElementById('modal-celda-obs-label');
+    const modalObsAyuda = document.getElementById('modal-celda-obs-ayuda');
+    // ===== FIN NUEVO =====
 
     if (!modal) {
       console.error('[corte] No existe #modal-celda');
@@ -646,15 +658,44 @@ window.CORTE = {
       modalTotal.textContent = fmt(evalExpr(modalInput.value));
     }
 
+    // ===== NUEVO: decidir si aplica obs =====
+    const EGRESOS_CAMPOS_JS = new Set([
+      'nomina_efectivo','gasolina','hemograma','patologia',
+      'varios','servicios','capacitacion'
+    ]);
+    const esEgreso      = EGRESOS_CAMPOS_JS.has(campo);
+    const esColaborador = (campo === 'por_cobrar' && subcampo === 'colaboradores');
+    const aplicaObs     = esEgreso || esColaborador;
+
+    if (aplicaObs) {
+      modalObsWrap.classList.remove('d-none');
+      if (esColaborador) {
+        modalObsLabel.textContent = 'Desglose del adeudo';
+        modalObsAyuda.textContent =
+          'Escribe el desglose tal cual quieres que aparezca. Se mostrará como "Deuda de $X: <tu texto>".';
+        modalObs.placeholder = 'Ej: $100 de Andrea y $500 de Mimi';
+      } else {
+        modalObsLabel.textContent = 'Detalle del gasto';
+        modalObsAyuda.textContent =
+          'Escribe el detalle tal cual quieres que aparezca. Se mostrará como "Gasto de $X: <tu texto>".';
+        modalObs.placeholder = 'Ej: agua';
+      }
+      const d = window.__corteData?.datos?.[sucursal]?.[fecha];
+      const key = subcampo ? `${campo}:${subcampo}` : campo;
+      modalObs.value = d?.obs_celdas?.[key] || '';
+    } else {
+      modalObsWrap.classList.add('d-none');
+      modalObs.value = '';
+    }
+    // ===== FIN NUEVO =====
+
     modal.showModal();
     setTimeout(() => { modalInput?.focus(); modalInput?.select(); }, 30);
 
-    // Enganchar listeners del input y botones (idempotente: se re-enganchan cada vez, sin acumular)
     modalInput?.addEventListener('input', () => {
       if (modalTotal) modalTotal.textContent = fmt(evalExpr(modalInput.value));
     }, { once: false });
 
-    // Nota: para evitar listeners duplicados, usamos onX en vez de addEventListener
     modalInput.onkeydown = (e) => {
       if (e.key === 'Enter') { e.preventDefault(); aplicarModal(); }
       if (e.key === 'Escape') { e.preventDefault(); cerrarModal(); }
@@ -663,26 +704,35 @@ window.CORTE = {
     document.getElementById('modal-celda-cerrar-x').onclick = cerrarModal;
   }
 
-  function actualizarTotalModal() {
-    const v = modalInput.value;
-    modalTotal.textContent = fmt(evalExpr(v));
-  }
-
   function aplicarModal() {
     if (!celdaActiva) return;
     const { td, fecha, sucursal, campo, subcampo } = celdaActiva;
-    const modalInput = document.getElementById('modal-celda-input');
+    const modalInput   = document.getElementById('modal-celda-input');
+    const modalObsWrap = document.getElementById('modal-celda-obs-wrap');
+    const modalObs     = document.getElementById('modal-celda-obs');
     const valor = (modalInput?.value || '').trim();
+
+    // ===== NUEVO: obs solo si el wrap está visible =====
+    const obs = (!modalObsWrap.classList.contains('d-none'))
+                ? (modalObs?.value || '').trim()
+                : undefined;
+    // ===== FIN NUEVO =====
 
     td.dataset.raw = valor;
     const span = td.querySelector('.corte-valor');
     if (span) span.textContent = fmt(evalExpr(valor));
 
-    guardarRaw({ fecha, sucursal, campo, subcampo, valor }).then(() => {
-      navegarVertical(td, +1);
-    });
+    const payload = { fecha, sucursal, campo, valor };
+    if (subcampo) payload.subcampo = subcampo;
+    if (obs !== undefined) payload.obs = obs;   // ===== NUEVO =====
 
+    guardarRaw(payload).then(() => navegarVertical(td, +1));
     cerrarModal();
+  }
+
+  function actualizarTotalModal() {
+    const v = modalInput.value;
+    modalTotal.textContent = fmt(evalExpr(v));
   }
 
   function cerrarModal() {
@@ -692,14 +742,26 @@ window.CORTE = {
   }
 
   // -------- Observaciones --------
-  document.querySelectorAll('input.corte-obs').forEach(inp => {
+  document.querySelectorAll('textarea.corte-obs').forEach(inp => {
     if (bloqueada) {
       inp.readOnly = true;
       inp.classList.add('bloqueada');
       return;
     }
-    inp.addEventListener('focus', () => { inp.dataset.original = inp.value; });
+
+    // Auto-resize
+    const autoAlto = () => {
+      inp.style.height = 'auto';
+      inp.style.height = inp.scrollHeight + 'px';
+    };
+
+    inp.addEventListener('focus', () => {
+      inp.dataset.original = inp.value;
+      autoAlto();
+    });
+
     inp.addEventListener('input', () => {
+      autoAlto();
       const key = `obs|${inp.dataset.fecha}|${inp.dataset.sucursal}`;
       clearTimeout(timers[key]);
       timers[key] = setTimeout(() => {
@@ -707,8 +769,10 @@ window.CORTE = {
         guardarRaw(data);
       }, DEBOUNCE);
     });
+
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      // Enter = salto de línea natural. Ctrl/Cmd+Enter = forzar guardado.
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         const key = `obs|${inp.dataset.fecha}|${inp.dataset.sucursal}`;
         clearTimeout(timers[key]);
@@ -722,6 +786,9 @@ window.CORTE = {
         inp.blur();
       }
     });
+
+    // Primer auto-alto al cargar
+    autoAlto();
   });
 
   // -------- Tabs de sucursal --------
@@ -956,6 +1023,13 @@ window.CORTE = {
       <div class="mt-3 text-end">
         <span class="text-muted me-2">Total:</span>
         <span id="modal-celda-total" class="h3 m-0 text-primary">$0.00</span>
+      </div>
+      <!-- Observaciones por celda -->
+      <div id="modal-celda-obs-wrap" class="mt-3 d-none">
+        <label class="form-label" id="modal-celda-obs-label">Observaciones</label>
+        <textarea id="modal-celda-obs" class="form-control" rows="2"
+          placeholder="Escribe el detalle…"></textarea>
+        <div class="form-text" id="modal-celda-obs-ayuda"></div>
       </div>
     </div>
     <div class="modal-footer">

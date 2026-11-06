@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -96,12 +97,38 @@ def init_db():
         servicios           TEXT DEFAULT '',
         capacitacion        TEXT DEFAULT '',
         por_cobrar_json     TEXT DEFAULT '{}',
+        obs_celdas_json     TEXT DEFAULT '{}',
         observaciones       TEXT DEFAULT '',
         creado_en           TEXT DEFAULT CURRENT_TIMESTAMP,
         actualizado_en      TEXT DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(fecha, sucursal)
     )
     """)
+
+    # ---- NUEVO: migración de obs_celdas_json ----
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cortes_diarios)").fetchall()}
+    if "obs_celdas_json" not in cols:
+        conn.execute("ALTER TABLE cortes_diarios ADD COLUMN obs_celdas_json TEXT DEFAULT '{}'")
+        print("[db] migración: cortes_diarios.obs_celdas_json agregada")
+
+    # ---- NUEVO: sembrar __manual__ en filas viejas ----
+    rows_mig = conn.execute("""
+        SELECT id, observaciones, obs_celdas_json FROM cortes_diarios
+        WHERE observaciones != ''
+        AND (obs_celdas_json IS NULL OR obs_celdas_json = '{}')
+    """).fetchall()
+    for r in rows_mig:
+        try:
+            data = json.loads(r["obs_celdas_json"] or "{}")
+        except Exception:
+            data = {}
+        data["__manual__"] = r["observaciones"]
+        conn.execute(
+            "UPDATE cortes_diarios SET obs_celdas_json = ? WHERE id = ?",
+            (json.dumps(data, ensure_ascii=False), r["id"]),
+        )
+    if rows_mig:
+        print(f"[db] migración: __manual__ sembrado en {len(rows_mig)} filas")
 
     conn.execute("""
     CREATE TABLE IF NOT EXISTS cortes_semanas (
@@ -116,6 +143,12 @@ def init_db():
         UNIQUE(anio, semana)
     )
     """)
+
+    # Migración cortes_diarios
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(cortes_diarios)").fetchall()}
+    if "obs_celdas_json" not in cols:
+        conn.execute("ALTER TABLE cortes_diarios ADD COLUMN obs_celdas_json TEXT DEFAULT '{}'")
+        print("[db] migración: cortes_diarios.obs_celdas_json agregada")
 
     # --- Servicios Externos ---
     conn.execute("""
@@ -133,6 +166,7 @@ def init_db():
         UNIQUE(anio, semana)
     )
     """)
+
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_serv_sem_estado "
         "ON servicios_semanas(estado)"
@@ -155,6 +189,7 @@ def init_db():
         actualizado_en TEXT DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
     conn.execute("CREATE INDEX IF NOT EXISTS idx_serv_ext_fecha ON servicios_externos(fecha)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_serv_ext_pago ON servicios_externos(fecha_pago)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_serv_ext_concepto ON servicios_externos(concepto)")

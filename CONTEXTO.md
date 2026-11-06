@@ -1,7 +1,7 @@
 # VetSuite Web — Contexto del proyecto
 
-Versión: v0.7
-Última actualización: 2026-11-04
+Versión: v0.8
+Última actualización: 2026-11-05
 
 Documento vivo del proyecto. Refleja el estado actual de la arquitectura,
 la base de datos, los flujos y las reglas. El historial de sesiones vive en
@@ -18,10 +18,11 @@ CONTEXTO_SESION.md.
 7. Catálogo QVET
 8. Corte Semanal
 9. Servicios Externos
-10. Cómo trabajar
-11. Reglas de la versión web
-12. Reglas de git
-13. Pendientes
+10. Observaciones por celda en Corte Semanal
+11. Cómo trabajar
+12. Reglas de la versión web
+13. Reglas de git
+14. Pendientes
 
 ---
 
@@ -46,7 +47,7 @@ CONTEXTO_SESION.md.
 - Ingresos: completo (Gmail → XML+PDF → BD → Excel → ZIP → catálogo → reportes).
 - Egresos: completo (SAT → XML → BD → Excel → ZIP → reportes).
 - Recordatorios: completo (Excel → mensajes → WhatsApp wa.me → historial).
-- Corte Semanal: completo (captura diaria → totales → Excel → cierre de semana → reportes).
+- Corte Semanal: completo (captura diaria → totales → Excel → cierre de semana → reportes → observaciones por celda).
 - Servicios Externos: completo (captura → filtros → cierre de semana → reportes).
 - Catálogo QVET: consulta + edición + agregar (desde /ingresos/catalogo).
 - Reportes (árbol): modal en Ingresos, Egresos, Corte Semanal y Servicios Externos.
@@ -104,7 +105,7 @@ Paquete core/:
   - historial.py
   - envio.py
   - procesar_excel.py
-- corte/
+- corte_semanal/
   - __init__.py
   - expr.py — parser seguro de expresiones tipo 2345+679
   - semanas.py — helpers ISO week (lunes a domingo)
@@ -113,7 +114,7 @@ Paquete core/:
   - __init__.py
   - config.py — cargar/guardar listas (conceptos, tipos de pago)
   - parser.py — parseo de "Efectivo 24/10/26" para migración
-  - semanas.py — wrapper de core/corte/semanas.py
+  - semanas.py — wrapper de core/corte_semanal/semanas.py
 
 Paquete routers/:
 
@@ -123,7 +124,7 @@ Paquete routers/:
 - recordatorios.py
 - config_gmail.py
 - uploads.py
-- corte.py — Corte Semanal (captura + Excel + cierre + /arbol)
+- corte_semanal.py — Corte Semanal (captura + Excel + cierre + /arbol + obs por celda)
 - servicios_externos.py — Servicios Externos (captura + cierre + /arbol)
 - admin_ips.py — administración de IPs y permisos
 
@@ -171,8 +172,8 @@ Carpeta uploads/:
 - recordatorios/vacunas_importada.json
 - recordatorios/historial_recordatorios.json
 - recordatorios/reportes/
-- cortes/plantilla_semanal.xlsx — plantilla base (NO va a git)
-- cortes/<año>-W<semana> - Semanal Baalak-Prado <Mes>.xlsx — Excel cerrados
+- corte_semanal/plantilla_semanal.xlsx — plantilla base (NO va a git)
+- corte_semanal/<año>-W<semana> - Semanal Baalak-Prado <Mes>.xlsx — Excel cerrados
 - correos_procesados.json
 - logs/
 
@@ -243,6 +244,7 @@ de escritorio.
     servicios           TEXT DEFAULT '',
     capacitacion        TEXT DEFAULT '',
     por_cobrar_json     TEXT DEFAULT '{}',
+    obs_celdas_json     TEXT DEFAULT '{}',  -- v0.8: obs por celda (ver §10)
     observaciones       TEXT DEFAULT '',
     creado_en           TEXT DEFAULT CURRENT_TIMESTAMP,
     actualizado_en      TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -351,10 +353,11 @@ de escritorio.
 2. Sub-tabs por bloque (Ingresos / Egresos / Por cobrar / Observaciones).
 3. Captura por celda con modal (acepta 2345+679).
 4. Totales en vivo.
-5. Excel con fórmulas vivas usando plantilla (uploads/cortes/plantilla_semanal.xlsx).
+5. Excel con fórmulas vivas usando plantilla (uploads/corte_semanal/plantilla_semanal.xlsx).
 6. Cierre de semana (bloquea la edición, guarda Excel).
 7. Reapertura de semana (borra el Excel guardado).
 8. Reportes: modal con árbol Año → Semana → Sucursal (ingresos, egresos, utilidad).
+9. Observaciones por celda (v0.8): egresos y por_cobrar/colaboradores permiten capturar un detalle que se anexa al campo `observaciones` del día (ver §10).
 
 ### Servicios Externos
 
@@ -490,14 +493,15 @@ patología, varios, servicios, capacitación), los conceptos de "por cobrar"
 idéntico al original (con fórmulas vivas) y se bloquea la edición.
 
 - Montos como TEXT. El usuario puede capturar 2345+679. El total se evalúa
-  con core/corte/expr.py (sin eval).
-- Excel desde plantilla (uploads/cortes/plantilla_semanal.xlsx).
+  con core/corte_semanal/expr.py (sin eval).
+- Excel desde plantilla (uploads/corte_semanal/plantilla_semanal.xlsx).
 - Nombre de hoja: "Sem del <día1> al <día7>".
 - Nombre de archivo: "Semanal Baalak-Prado <Mes>.xlsx" (mes del lunes).
 - Archivo cerrado: "<año>-W<semana> - Semanal Baalak-Prado <Mes>.xlsx".
 - Semana cerrada: POST /corte_semanal/actualizar responde 409.
 - Reabrir borra el Excel guardado.
 - Excel generado al cerrar, no antes.
+- v0.8: observaciones por celda (ver §10).
 
 ---
 
@@ -520,7 +524,78 @@ Registro continuo de servicios externos (incineraciones, hemogramas, etc.).
 
 ---
 
-## 10. Cómo trabajar
+## 10. Observaciones por celda en Corte Semanal (v0.8)
+
+Permite anexar detalle a la observación del día desde el modal de captura
+de celda, sin tener que ir al tab Observaciones.
+
+### Alcance
+
+- **Egresos** (`nomina_efectivo`, `gasolina`, `hemograma`, `patologia`,
+  `varios`, `servicios`, `capacitacion`): el modal muestra un textarea
+  "Detalle del gasto". Se anexa al día como `Gasto de $X: <texto>`.
+- **Por cobrar / `colaboradores`**: el modal muestra un textarea
+  "Desglose del adeudo". Se anexa al día como `Deuda de $X: <texto>`.
+- El resto de celdas (ingresos, otras de por_cobrar) **no** muestran textarea.
+
+### Persistencia
+
+- Nueva columna `cortes_diarios.obs_celdas_json` (TEXT, default `'{}'`).
+- Estructura:
+
+      {
+        "__manual__": "texto libre del tab Observaciones",
+        "gasolina": "agua",
+        "nomina_efectivo": "sueldos semana",
+        "por_cobrar:colaboradores": "$100 de Andrea y $500 de Mimi"
+      }
+
+- `__manual__` guarda lo que el usuario escribe en el tab Observaciones.
+- El resto de claves son `campo` o `campo:subcampo`.
+
+### Regeneración de `observaciones`
+
+Cada vez que se guarda una celda (o la observación manual), el backend
+**relee el valor fresco** de la celda y **regenera** el campo
+`observaciones` del día:
+
+1. Primero `__manual__` (si existe).
+2. Luego, por cada clave en `obs_celdas_json`, se formatea el texto con
+   `_formatear_obs_celda(campo, sub, valor, texto)`:
+   - Egreso → `Gasto de $X: <texto>`
+   - Colaboradores → `Deuda de $X: <texto>`
+3. Se unen con `\n`.
+
+Si el usuario **borra** el textarea y guarda, la clave se elimina del JSON
+y la línea desaparece de `observaciones`.
+
+Si el usuario **cambia el monto** de la celda, la cantidad en el texto se
+**recalcula automáticamente** (porque se relee el valor fresco), pero el
+texto que escribió se conserva.
+
+### Frontend
+
+- `<dialog id="modal-celda">` tiene un bloque `#modal-celda-obs-wrap`
+  (oculto por default) con `<textarea id="modal-celda-obs">`.
+- `abrirModal(td)` decide si mostrarlo según `campo`/`subcampo`.
+- `aplicarModal()` manda `obs` en el payload de `/actualizar`.
+- `guardarRaw(payload)` manda el payload completo (ya no filtra campos).
+- El tab Observaciones usa `<textarea class="corte-obs">` (no `<input>`)
+  para que los `\n` se rendericen como saltos de línea reales.
+- Auto-resize en el textarea (crece según contenido).
+
+### Migración
+
+En `init_db()`:
+
+1. `PRAGMA table_info(cortes_diarios)` → si no existe `obs_celdas_json`,
+   `ALTER TABLE ADD COLUMN`.
+2. Para filas con `observaciones != ''` y `obs_celdas_json = '{}'`, se
+   siembra `__manual__` con el texto viejo, para no perderlo.
+
+---
+
+## 11. Cómo trabajar
 
 - Arrancar: uvicorn main:app --reload --host 127.0.0.1 --port 8000
 - Probar: http://127.0.0.1:8000/ingresos, /egresos, /recordatorios,
@@ -537,7 +612,7 @@ Registro continuo de servicios externos (incineraciones, hemogramas, etc.).
 
 ---
 
-## 11. Reglas de la versión web
+## 12. Reglas de la versión web
 
 1. El PDF es la fuente de productos en Ingresos. El XML solo aporta cabecera.
 2. El XML es la fuente de todo en Egresos. No hay PDF.
@@ -584,10 +659,23 @@ Registro continuo de servicios externos (incineraciones, hemogramas, etc.).
     edición (no en la fila).
 38. window.abrirModalReportes se define dentro del IIFE (necesario para
     el onclick del HTML).
+39. v0.8: `cortes_diarios.obs_celdas_json` guarda las observaciones por
+    celda. `__manual__` es la observación libre del día.
+40. v0.8: `observaciones` del día se REGENERA a partir de `__manual__` +
+    las claves de `obs_celdas_json`. Nunca se anexa a mano.
+41. v0.8: formato de las observaciones generadas:
+    - Egreso: `Gasto de $X: <texto>`
+    - Colaboradores: `Deuda de $X: <texto>`
+42. v0.8: si el usuario edita el monto de la celda, la cantidad en la
+    observación se recalcula; el texto escrito por el usuario se conserva.
+43. v0.8: si el usuario borra el textarea, la línea desaparece de
+    `observaciones` (se elimina la clave del JSON).
+44. v0.8: el tab Observaciones usa `<textarea>` (no `<input>`) para que
+    los `\n` se rendericen como saltos de línea reales.
 
 ---
 
-## 12. Reglas de git
+## 13. Reglas de git
 
 NO van a git:
 
@@ -609,7 +697,7 @@ NO van a git:
 
 ---
 
-## 13. Pendientes
+## 14. Pendientes
 
 - [ ] Tests automáticos del parser de Recordatorios.
 - [ ] Tests automáticos del pipeline de Ingresos y Egresos.
@@ -617,6 +705,7 @@ NO van a git:
 - [ ] Tests automáticos del generador de Excel del Corte (excel_corte.py).
 - [ ] Tests automáticos del módulo Servicios Externos.
 - [ ] Tests automáticos del árbol de reportes de Corte Semanal.
+- [ ] Tests automáticos de la regeneración de observaciones (v0.8).
 - [ ] Documentación de instalación en Windows 11.
 - [ ] Arranque automático con el sistema (tarea programada).
 - [ ] Endpoint /egresos/zip con filtro por rango de fechas (hoy solo por mes).

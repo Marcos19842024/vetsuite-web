@@ -1,3 +1,203 @@
+# Sesión de trabajo — 2026-11-05 (VetSuite Web v0.8)
+
+## Resumen
+
+Sesión enfocada en **Corte Semanal**: se agregó la funcionalidad de
+**observaciones por celda** para egresos y para `por_cobrar/colaboradores`.
+Desde el modal de captura de la celda, el usuario puede escribir un detalle
+que se anexa automáticamente al campo `observaciones` del día con formato
+`Gasto de $X: <texto>` o `Deuda de $X: <texto>`.
+
+Se completó:
+- Columna `cortes_diarios.obs_celdas_json` (JSON por día).
+- Migración idempotente + siembra de `__manual__`.
+- Regeneración automática de `observaciones` a partir de `__manual__` +
+  claves de `obs_celdas_json`.
+- Formato unificado: `: ` (dos puntos + espacio) en vez de `es de`.
+- Textarea condicional en el modal de celda (solo egresos y colaboradores).
+- El textarea del tab Observaciones se cambió a `<textarea>` para que se
+  rendericen los `\n` reales.
+- Auto-resize del textarea.
+
+## Qué se hizo
+
+### 1. Modelo de datos
+
+Columna nueva en `cortes_diarios`:
+
+    obs_celdas_json TEXT DEFAULT '{}'
+
+Estructura:
+
+    {
+      "__manual__": "texto libre del tab Observaciones",
+      "gasolina": "agua",
+      "nomina_efectivo": "sueldos semana",
+      "por_cobrar:colaboradores": "$100 de Andrea y $500 de Mimi"
+    }
+
+### 2. Migración en `db.py`
+
+- `PRAGMA table_info(cortes_diarios)` → si no existe `obs_celdas_json`,
+  `ALTER TABLE ADD COLUMN`.
+- Para filas con `observaciones != ''` y `obs_celdas_json = '{}'`,
+  sembrar `__manual__` con el texto viejo.
+- **Un solo `conn.commit()` al final de `init_db()`**. Antes había commits
+  intermedios que rompían la transacción.
+
+### 3. Backend — `routers/corte_semanal.py`
+
+Helpers:
+
+- `_cargar_obs_celdas(row)` — lee `obs_celdas_json` tolerante a None/JSON roto.
+- `_obs_manual_de(obs_celdas)` — devuelve `__manual__` limpio.
+- `_formatear_obs_celda(campo, sub, valor_str, obs_texto)`:
+  - Egreso → `Gasto de $X: <texto>`
+  - Colaboradores → `Deuda de $X: <texto>`
+  - Sin texto → `''`
+- `_regenerar_observaciones(obs_manual, obs_celdas, dia)` — combina
+  `__manual__` + cada clave, une con `\n`.
+
+`_cargar_semana` y `_fila_vacia`: agregan `obs_celdas` a cada día.
+
+`/datos`: agrega `obs_celdas` en cada fila.
+
+`/actualizar`:
+
+- Acepta `obs` en el payload.
+- Caso `observaciones`: guarda en `__manual__` y regenera.
+- Caso `por_cobrar`: guarda en `por_cobrar_json` y, si `subcampo ==
+  "colaboradores"`, guarda el texto en `obs_celdas["por_cobrar:colaboradores"]`.
+- Caso campo normal (egreso): guarda en la columna y, si aplica, el texto
+  en `obs_celdas[campo]`.
+- **Relee el valor fresco** de la celda antes de regenerar (para que la
+  cantidad se actualice al editar).
+- Devuelve `datos` + `totales` + `dias` (mismo formato que antes).
+
+Se extrajo `_respuesta_actualizar(conn, anio, semana, campo, valor)` para
+no duplicar el bloque de "releer + totales + enriquecer".
+
+### 4. Frontend — `templates/corte_semanal.html`
+
+- `#modal-celda-obs-wrap` (oculto por default) con
+  `<textarea id="modal-celda-obs">`.
+- `abrirModal(td)` decide si mostrarlo:
+  - `EGRESOS_CAMPOS.has(campo)` → label "Detalle del gasto".
+  - `campo === 'por_cobrar' && subcampo === 'colaboradores'` → label
+    "Desglose del adeudo".
+  - Carga el valor de `d.obs_celdas[key]`.
+- `aplicarModal()` manda `obs` en el payload.
+- `guardarRaw(payload)` acepta el payload completo (ya no filtra).
+- Tab Observaciones: `<input class="corte-obs">` → `<textarea
+  class="corte-obs" rows="1">`.
+- Listener de `textarea.corte-obs`:
+  - Auto-resize en focus e input.
+  - Enter = salto de línea natural.
+  - Ctrl/Cmd+Enter = forzar guardado.
+  - Escape = revertir.
+  - Blur = guardar por debounce.
+- `pintar(data)` actualiza `textarea.corte-obs` con el texto regenerado.
+
+### 5. CSS
+
+`static/style.css`:
+
+    textarea.corte-obs {
+      width: 100%;
+      min-height: 32px;
+      resize: vertical;
+      font-family: inherit;
+      font-size: .875rem;
+      padding: .25rem .5rem;
+      line-height: 1.3;
+      overflow: hidden;
+      border: 1px solid #dee2e6;
+      border-radius: .25rem;
+      background: #fff;
+    }
+    textarea.corte-obs:focus {
+      outline: none;
+      border-color: #206bc4;
+      box-shadow: 0 0 0 2px rgba(32, 107, 196, .15);
+    }
+
+## Bugs resueltos en esta sesión
+
+- **`sqlite3.OperationalError: near ")": syntax error`** al arrancar:
+  había una coma de más en el `CREATE TABLE cortes_diarios` al insertar
+  `obs_celdas_json`. Fix: revisar el `CREATE TABLE` completo y dejar un
+  solo `conn.commit()` al final de `init_db()` (antes había commits
+  intermedios que rompían la transacción).
+- **Formato `es de` en vez de `: `**: `_formatear_obs_celda` seguía con la
+  versión vieja. Fix: reemplazar por `Gasto de $X: <texto>` y
+  `Deuda de $X: <texto>`. Reiniciar uvicorn sin `--reload` para asegurar
+  que el cambio se aplique.
+- **`de de` duplicado** (`es de de agua`): el código viejo prefijaba
+  `es de ` y el usuario escribía `de agua`. Fix: con el nuevo formato
+  `: ` el usuario escribe solo el detalle.
+- **Observaciones pegadas** (`MimiGasto de $100.00`): el tab Observaciones
+  era un `<input type="text">` y no renderiza `\n`. Fix: cambiar a
+  `<textarea>` + auto-resize.
+- **`conn.commit()` huérfano**: había un commit justo después del
+  `CREATE TABLE cortes_diarios`, lo que partía la transacción de la
+  migración. Fix: un solo commit al final de `init_db()`.
+
+## Estado actual
+
+### Funcional
+- ✅ Corte Semanal con observaciones por celda (egresos y colaboradores).
+- ✅ Migración idempotente + siembra de `__manual__`.
+- ✅ Regeneración automática de `observaciones` al editar monto.
+- ✅ Tab Observaciones con `<textarea>` (saltos de línea reales).
+- ✅ Todos los módulos anteriores siguen funcionando (Ingresos, Egresos,
+  Recordatorios, Servicios Externos, Corte Semanal, Catálogo QVET).
+
+### Pendiente (Corte)
+- Validación más estricta al cerrar.
+- Exportar a PDF.
+- Historial de cierres.
+- Tests automáticos de la regeneración de observaciones.
+
+### Pendiente (global, arrastrado)
+- Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
+- Documentar instalación en Windows 11.
+- Revisar `iicio.txt` y borrarlo.
+- Tests automáticos (Recordatorios, Ingresos, Egresos, Corte, Servicios
+  Externos).
+- Arranque automático con el sistema.
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Si `--reload` no aplica un cambio en un helper interno, matar uvicorn
+  (`pkill -f uvicorn`) y arrancar sin `--reload`.
+- Probar Corte Semanal: `http://127.0.0.1:8000/corte_semanal`
+- La plantilla del Corte debe estar en
+  `uploads/corte_semanal/plantilla_semanal.xlsx`.
+- Si se pierde o corrompe: `python regenerar_plantilla.py`
+
+## Reglas nuevas (Corte Semanal / Observaciones por celda)
+
+45. `cortes_diarios.obs_celdas_json` guarda las observaciones por celda.
+    `__manual__` es la observación libre del día.
+46. `observaciones` del día se REGENERA a partir de `__manual__` + claves
+    de `obs_celdas_json`. Nunca se anexa a mano.
+47. Formato de las observaciones generadas:
+    - Egreso: `Gasto de $X: <texto>`
+    - Colaboradores: `Deuda de $X: <texto>`
+48. Si el usuario edita el monto de la celda, la cantidad en la observación
+    se recalcula; el texto escrito por el usuario se conserva.
+49. Si el usuario borra el textarea, la línea desaparece de `observaciones`
+    (se elimina la clave del JSON).
+50. El tab Observaciones usa `<textarea>` (no `<input>`) para que los `\n`
+    se rendericen como saltos de línea reales.
+51. Un solo `conn.commit()` al final de `init_db()`. Los `CREATE TABLE` y
+    `ALTER` van todos antes.
+52. El textarea del modal de celda solo aparece para egresos y para
+    `por_cobrar/colaboradores`. El resto de celdas no lo muestran.
+53. `_respuesta_actualizar()` centraliza el "releer + totales +
+    enriquecer" para no duplicar en `/actualizar`.
+
 # Sesión de trabajo — 2026-11-04 (VetSuite Web v0.7)
 
 ## Resumen
