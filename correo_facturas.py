@@ -148,13 +148,16 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
             return descargados, errores, info
 
         # ---- Criterios de búsqueda ----
+        # imaplib espera los criterios como argumentos separados, NO como
+        # un solo string con paréntesis. Si se pasa "(SINCE ... BEFORE ...)"
+        # Gmail ignora el filtro y devuelve TODO.
         criterios = []
         if solo_no_leidos:
             criterios.append("UNSEEN")
 
         imap_desde = _fecha_imap_desde_iso(fecha_desde)
         if imap_desde:
-            criterios.append(f'SINCE "{imap_desde}"')
+            criterios.extend(["SINCE", imap_desde])
             log(f"Filtro desde: {imap_desde}")
 
         if fecha_hasta:
@@ -169,18 +172,21 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
                                   f"{meses[dt_mas.month-1]}-{dt_mas.year}")
                 except ValueError:
                     imap_hasta = imap_hasta_base
-                criterios.append(f'BEFORE "{imap_hasta}"')
+                criterios.extend(["BEFORE", imap_hasta])
                 log(f"Filtro hasta: {imap_hasta} (exclusivo, +1 dia)")
 
         if filtro_remitente:
-            criterios.append(f'FROM "{filtro_remitente}"')
-            log(f"Filtro de remitente: {filtro_remitente}")
+            rem = filtro_remitente.strip()
+            if " " in rem:
+                rem = f'"{rem}"'
+            criterios.extend(["FROM", rem])
 
-        criterio_final = "ALL" if not criterios else "(" + " ".join(criterios) + ")"
+        if not criterios:
+            criterios = ["ALL"]
 
         progreso("Buscando correos en la etiqueta...")
-        log(f"Buscando correos con criterio: {criterio_final}")
-        status, data = mail.search(None, criterio_final)
+        log(f"Buscando correos con criterios: {criterios}")
+        status, data = mail.search(None, *criterios)
         if status != "OK":
             errores.append("Error al buscar correos")
             return descargados, errores, info
@@ -214,8 +220,8 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
                     errores.append(f"Error al obtener correo {num}")
                     continue
 
-                raw_email = msg_data[0][1]
-                msg = email.message_from_bytes(raw_email)
+                raw_email = msg_data[0][1] # type: ignore
+                msg = email.message_from_bytes(raw_email) # type: ignore
 
                 message_id = (msg.get("Message-ID") or "").strip()
                 if usar_cache and message_id and message_id in cache_ids:
@@ -285,7 +291,7 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
                         contador += 1
 
                     with open(destino, "wb") as f:
-                        f.write(payload)
+                        f.write(payload) # type: ignore
 
                     adjuntos_correo.append(destino)
                     descargados.append(destino)
