@@ -2,3 +2,7 @@ cd C:\vetsuite_web
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
+
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+
+npx qrdev uvicorn main:app --host 0.0.0.0 --port 8000
