@@ -1,7 +1,7 @@
 # VetSuite Web — Contexto del proyecto
 
-Versión: v0.8
-Última actualización: 2026-11-05
+Versión: v0.9
+Última actualización: 2026-11-07
 
 Documento vivo del proyecto. Refleja el estado actual de la arquitectura,
 la base de datos, los flujos y las reglas. El historial de sesiones vive en
@@ -19,10 +19,12 @@ CONTEXTO_SESION.md.
 8. Corte Semanal
 9. Servicios Externos
 10. Observaciones por celda en Corte Semanal
-11. Cómo trabajar
-12. Reglas de la versión web
-13. Reglas de git
-14. Pendientes
+11. Ingresos: filtro de fechas, visor de archivos, re-clasificación
+12. UI: iconos, sidebar, tabla full-height
+13. Cómo trabajar
+14. Reglas de la versión web
+15. Reglas de git
+16. Pendientes
 
 ---
 
@@ -32,6 +34,7 @@ CONTEXTO_SESION.md.
 - SQLite (vetsuite.db)
 - Jinja2 para templates
 - Tabler UI (CDN) para el diseño visual (basado en Bootstrap 5)
+- Tabler Icons (CDN) para los iconos del sidebar y botones
 - openpyxl para Excel (Ingresos, Egresos, Recordatorios, Corte)
 - pdfplumber para PDFs de Ingresos
 - cfdiclient para el SAT (Egresos)
@@ -44,7 +47,7 @@ CONTEXTO_SESION.md.
 
 ## 2. Módulos (estado)
 
-- Ingresos: completo (Gmail → XML+PDF → BD → Excel → ZIP → catálogo → reportes).
+- Ingresos: completo (Gmail → XML+PDF → BD → Excel → ZIP → catálogo → reportes → visor PDF/XML → filtro de fechas por header Date).
 - Egresos: completo (SAT → XML → BD → Excel → ZIP → reportes).
 - Recordatorios: completo (Excel → mensajes → WhatsApp wa.me → historial).
 - Corte Semanal: completo (captura diaria → totales → Excel → cierre de semana → reportes → observaciones por celda).
@@ -99,6 +102,7 @@ Paquete core/:
 - rutas_egresos.py
 - sat_historial.py
 - rutas_recordatorios.py
+- permisos_ip.py — módulos válidos, modulo_de_path(), es_admin_ip()
 - recordatorios/
   - __init__.py
   - sucursales.py
@@ -118,7 +122,7 @@ Paquete core/:
 
 Paquete routers/:
 
-- ingresos.py — incluye /arbol y /catalogo
+- ingresos.py — incluye /arbol, /catalogo, /ver-pdf, /ver-xml, /reclasificar-sucursales
 - rechazados.py
 - egresos.py — incluye /arbol
 - recordatorios.py
@@ -126,7 +130,7 @@ Paquete routers/:
 - uploads.py
 - corte_semanal.py — Corte Semanal (captura + Excel + cierre + /arbol + obs por celda)
 - servicios_externos.py — Servicios Externos (captura + cierre + /arbol)
-- admin_ips.py — administración de IPs y permisos
+- admin_ips.py — administración de IPs y permisos (prefix /admin)
 
 Paquete templates/:
 
@@ -222,9 +226,8 @@ Carpeta uploads/:
     enviado INTEGER DEFAULT 0
 
 Nota: Recordatorios web NO usa esta tabla. Persiste en JSON dentro de
-uploads/recordatorios/ (agenda_importada.json, vacunas_importada.json,
-historial_recordatorios.json). La tabla queda como placeholder de la app
-de escritorio.
+uploads/recordatorios/. La tabla queda como placeholder de la app de
+escritorio.
 
 ### Tabla cortes_diarios
 
@@ -244,7 +247,7 @@ de escritorio.
     servicios           TEXT DEFAULT '',
     capacitacion        TEXT DEFAULT '',
     por_cobrar_json     TEXT DEFAULT '{}',
-    obs_celdas_json     TEXT DEFAULT '{}',  -- v0.8: obs por celda (ver §10)
+    obs_celdas_json     TEXT DEFAULT '{}',  -- v0.8: obs por celda
     observaciones       TEXT DEFAULT '',
     creado_en           TEXT DEFAULT CURRENT_TIMESTAMP,
     actualizado_en      TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -299,17 +302,19 @@ de escritorio.
 ### Ingresos
 
 1. Config Gmail (/config/gmail, modal en /ingresos).
-2. Descarga de Gmail (no leídos / rango / últimos N días).
+2. Descarga de Gmail (no leídos / rango / últimos N días). El filtro de fechas se aplica en Python sobre el header `Date:`, no con `SINCE`/`BEFORE` de IMAP (Gmail los ignora).
 3. Procesamiento de cada par XML+PDF: cabecera del XML, productos del PDF, datos_json.
 4. Renombrado a <folio>.xml / <folio>.pdf.
 5. Organización en uploads/ingresos/<año>/<mes>/<sucursal>/.
-6. Sucursal por serie del asunto (S1 → Baalak, Prados → Prado).
+6. Sucursal por serie del asunto (S1 → Baalak, Prados → Prado) o por `Serie` del XML (fallback).
 7. Reclasificación de productos no catalogados.
-8. Excel (/ingresos/excel) con filtros.
-9. ZIP mensual con la estructura de escritorio.
-10. Reset total del módulo.
-11. Reportes: modal con árbol Año → Mes → Sucursal.
-12. Catálogo: consulta, edición y agregar productos desde /ingresos/catalogo.
+8. Re-clasificación de sucursales (endpoint `/reclasificar-sucursales`).
+9. Excel (/ingresos/excel) con filtros.
+10. ZIP mensual con la estructura de escritorio.
+11. Reset total del módulo.
+12. Reportes: modal con árbol Año → Mes → Sucursal.
+13. Catálogo: consulta, edición y agregar productos desde /ingresos/catalogo.
+14. Visor: doble clic en fila abre el PDF; Ctrl/Cmd + doble clic abre el XML.
 
 ### Egresos
 
@@ -339,7 +344,7 @@ de escritorio.
 5. Generación de mensajes con reglas de agrupación inteligente.
 6. UI con dos tabs (Citas / Vacunas) con persistencia en localStorage.
 7. Selección por clic en la fila (radio oculto interno).
-8. Botón único de envío/marcar/desmarcar.
+8. Botón único de envío/marcar/desmarcar con iconos Tabler (`ti-brand-whatsapp-filled` / `ti-x`).
 9. Modal de mensaje propio (independiente de Bootstrap JS).
 10. Cambio de sucursal automático (regenera mensajes no enviados).
 11. Envío por WhatsApp vía wa.me.
@@ -357,7 +362,7 @@ de escritorio.
 6. Cierre de semana (bloquea la edición, guarda Excel).
 7. Reapertura de semana (borra el Excel guardado).
 8. Reportes: modal con árbol Año → Semana → Sucursal (ingresos, egresos, utilidad).
-9. Observaciones por celda (v0.8): egresos y por_cobrar/colaboradores permiten capturar un detalle que se anexa al campo `observaciones` del día (ver §10).
+9. Observaciones por celda (v0.8): egresos y por_cobrar/colaboradores permiten capturar un detalle que se anexa al campo `observaciones` del día.
 
 ### Servicios Externos
 
@@ -595,7 +600,144 @@ En `init_db()`:
 
 ---
 
-## 11. Cómo trabajar
+## 11. Ingresos: filtro de fechas, visor de archivos, re-clasificación (v0.9)
+
+### Filtro de fechas de Gmail
+
+- **No se usa** `SINCE`/`BEFORE` de IMAP. Gmail los ignora o los aplica
+  sobre `INTERNALDATE` (fecha de entrega), no sobre el header `Date:`.
+- El `search` de IMAP solo lleva `UNSEEN` (si aplica), `FROM` (si aplica)
+  y `ALL`.
+- El filtro de fechas se hace **en Python**, leyendo `msg.get("Date")` con
+  `email.utils.parsedate_to_datetime`.
+- Se aplica **antes** del chequeo de caché y del filtro de remitente, para
+  descartar correos fuera de rango temprano.
+- `info["omitidos_fecha"]` cuenta los correos descartados por fecha.
+- El log del job muestra `Fuera de rango (fecha < >). Se omite. Asunto: ...`.
+
+### Visor PDF/XML
+
+- Endpoints:
+  - `GET /ingresos/ver-pdf/{id}` → sirve el PDF `inline`.
+  - `GET /ingresos/ver-xml/{id}` → sirve el XML `inline`.
+- Helper `_buscar_archivo(row, extension)`:
+  1. Busca por folio en la sucursal de la fila.
+  2. Fallback por UUID.
+  3. Fallback en cualquier sucursal.
+- Devuelve `404` si el archivo no está en disco.
+- Headers: `Content-Disposition: inline`, `Cache-Control: no-store`.
+
+### Re-clasificación de sucursales
+
+- Endpoint: `POST /ingresos/reclasificar-sucursales`.
+- Recorre las facturas con `sucursal` vacía o `_sin_sucursal`.
+- Para cada una: busca su XML, lee `Serie` con `leer_xml_factura()`, aplica
+  `serie_a_sucursal(serie)`.
+- `S1` → Baalak, `PRADO`/`PRADOS` → Prado. Otras series no se tocan.
+- Actualiza la BD y mueve los archivos a la carpeta correcta.
+- Resumen: `Reclasificadas: N | Sin XML: M | Errores: K`.
+
+### Regex de serie tolerante
+
+El regex en `correo_facturas.py` para extraer la serie del asunto es:
+
+    r"\b(S1|PRADOS?)\b[\/\s\-]*(\d+)"
+
+Captura:
+- `S1/08511-8363` → `S1` + `8511`
+- `Prados/00265-264` → `PRADOS` + `265`
+- `prados268-267` → `PRADOS` + `268`
+- `PRADOS 270-269` → `PRADOS` + `270`
+- `S1/8527` → `S1` + `8527`
+
+Normaliza `PRADO` → `PRADOS`. Quita ceros a la izquierda. Si no encuentra
+serie conocida, cae a un regex genérico `([A-Za-z0-9]+)\s*-\s*(\d+)`.
+
+---
+
+## 12. UI: iconos, sidebar, tabla full-height (v0.9)
+
+### Tabler Icons
+
+Se reemplazaron los emojis del sidebar y botones por iconos de Tabler:
+
+- CDN en `base.html`:
+
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+
+- Uso: `<i class="ti ti-<nombre>"></i>`.
+
+### Mapeo de iconos
+
+| Contexto | Icono | Clase |
+|---|---|---|
+| Ingresos (sidebar) | inbox | `ti-inbox` |
+| Egresos (sidebar) | send | `ti-send` |
+| Corte Semanal (sidebar) | chart-histogram | `ti-chart-histogram` |
+| Servicios Externos (sidebar) | tools | `ti-tools` |
+| Recordatorios (sidebar) | calendar-event | `ti-calendar-event` |
+| Permisos IP (sidebar) | shield-lock | `ti-shield-lock` |
+| Brand (VetSuite) | paw | `ti-paw` |
+| Descargar de Gmail | mail o download | `ti-mail` / `ti-download` |
+| Ver registros | eye o list | `ti-eye` / `ti-list` |
+| Exportar Excel | file-excel | `ti-file-excel` |
+| Enviar WhatsApp | brand-whatsapp-filled | `ti-brand-whatsapp-filled` |
+| Desmarcar (WhatsApp) | x | `ti-x` |
+| Reset | trash o refresh | `ti-trash` / `ti-refresh` |
+
+### Color del módulo activo en el sidebar
+
+En `static/style.css`:
+
+    .navbar-vertical .nav-item.active > .nav-link {
+        background-color: #206bc4;
+        color: #ffffff;
+    }
+    .navbar-vertical .nav-item.active > .nav-link .nav-link-icon,
+    .navbar-vertical .nav-item.active > .nav-link .nav-link-title {
+        color: #ffffff;
+    }
+
+### Item activo de Permisos IP
+
+- La URL real es `/admin/ips` (con slash), pero el nombre interno del
+  módulo es `"admin_ips"` (con guion bajo).
+- El `startswith` en `base.html` debe comparar contra la **URL**, no contra
+  el nombre interno:
+
+      {% if request.url.path.startswith('/admin') %}active{% endif %}
+
+### Tabla de Ingresos full-height
+
+En `static/style.css`:
+
+    .page-wrapper > .page-body {
+        display: flex; flex-direction: column; min-height: 0;
+    }
+    .page-body > .container-xl {
+        display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+    }
+    .card.tabla-full {
+        flex: 1 1 auto; min-height: 0;
+        display: flex; flex-direction: column; margin-bottom: 0;
+    }
+    .card.tabla-full .tabla-scroll {
+        flex: 1 1 auto; min-height: 0;
+        max-height: none !important; overflow: auto;
+    }
+
+- En `ingresos.html`, el card de la tabla lleva la clase `tabla-full`.
+- Solo aplica a Ingresos. Otras páginas conservan su `tabla-scroll` original.
+
+### Doble clic en fila de Ingresos
+
+- El `<tr>` lleva `data-id="{{ r.id }}"` y `style="cursor: pointer;"`.
+- `dblclick` normal → abre `/ingresos/ver-pdf/{id}` en pestaña nueva.
+- `Ctrl/Cmd + dblclick` → abre `/ingresos/ver-xml/{id}`.
+
+---
+
+## 13. Cómo trabajar
 
 - Arrancar: uvicorn main:app --reload --host 127.0.0.1 --port 8000
 - Probar: http://127.0.0.1:8000/ingresos, /egresos, /recordatorios,
@@ -609,10 +751,13 @@ En `init_db()`:
   servicios_externos_config.json.
 - Si se corrompen los archivos de Ingresos: python reparar_archivos.py
 - Si hay basura en uploads/facturas/: python limpiar_facturas.py
+- Si uvicorn no recarga un cambio de CSS/JS, forzar recarga en el navegador
+  con Ctrl+Shift+R (Cmd+Shift+R en Mac). Un `304 Not Modified` en la
+  consola es normal (el archivo no cambió para el navegador).
 
 ---
 
-## 12. Reglas de la versión web
+## 14. Reglas de la versión web
 
 1. El PDF es la fuente de productos en Ingresos. El XML solo aporta cabecera.
 2. El XML es la fuente de todo en Egresos. No hay PDF.
@@ -672,10 +817,37 @@ En `init_db()`:
     `observaciones` (se elimina la clave del JSON).
 44. v0.8: el tab Observaciones usa `<textarea>` (no `<input>`) para que
     los `\n` se rendericen como saltos de línea reales.
+45. v0.9: el filtro de fechas de Gmail se hace en Python sobre el header
+    `Date:` con `parsedate_to_datetime`. NO se usa `SINCE`/`BEFORE` de
+    IMAP (Gmail los ignora o los aplica sobre `INTERNALDATE`).
+46. v0.9: el `search` de IMAP solo lleva `UNSEEN`, `FROM` y `ALL`.
+    Los criterios se pasan como argumentos sueltos (`*criterios`), no
+    como un string con paréntesis.
+47. v0.9: el filtro de fecha se aplica ANTES del caché y del filtro de
+    remitente.
+48. v0.9: el regex de serie del asunto es tolerante:
+    `\b(S1|PRADOS?)\b[\/\s\-]*(\d+)`. Acepta con/sin `/`, espacio o guion.
+49. v0.9: `serie_a_sucursal()` normaliza `PRADO` → `PRADOS` y case.
+50. v0.9: el endpoint `/reclasificar-sucursales` solo mueve a Baalak/Prado
+    cuando el XML dice `S1` o `Prado(s)`. Otras series no se tocan.
+51. v0.9: el visor de archivos (`/ver-pdf/{id}`, `/ver-xml/{id}`) sirve
+    `inline` con `Cache-Control: no-store`. Fallback por UUID y por
+    cualquier sucursal.
+52. v0.9: doble clic en fila de Ingresos abre PDF; Ctrl/Cmd + doble clic
+    abre XML.
+53. v0.9: el item activo del sidebar compara `request.url.path` (URL),
+    NO el nombre interno del módulo. Ej: `/admin` (URL), no `admin_ips`.
+54. v0.9: los iconos del sidebar y botones usan Tabler Icons
+    (`<i class="ti ti-<nombre>"></i>`), no emojis.
+55. v0.9: la tabla de Ingresos usa `.card.tabla-full` + `.tabla-scroll`
+    para ocupar el alto restante. Otras páginas conservan su
+    `.tabla-scroll` original.
+56. v0.9: si uvicorn no recarga CSS/JS, forzar recarga en el navegador.
+    Un `304 Not Modified` es normal.
 
 ---
 
-## 13. Reglas de git
+## 15. Reglas de git
 
 NO van a git:
 
@@ -697,7 +869,7 @@ NO van a git:
 
 ---
 
-## 14. Pendientes
+## 16. Pendientes
 
 - [ ] Tests automáticos del parser de Recordatorios.
 - [ ] Tests automáticos del pipeline de Ingresos y Egresos.
@@ -706,6 +878,7 @@ NO van a git:
 - [ ] Tests automáticos del módulo Servicios Externos.
 - [ ] Tests automáticos del árbol de reportes de Corte Semanal.
 - [ ] Tests automáticos de la regeneración de observaciones (v0.8).
+- [ ] Tests automáticos del filtro de fechas de Gmail y del regex de serie (v0.9).
 - [ ] Documentación de instalación en Windows 11.
 - [ ] Arranque automático con el sistema (tarea programada).
 - [ ] Endpoint /egresos/zip con filtro por rango de fechas (hoy solo por mes).
@@ -723,3 +896,5 @@ NO van a git:
 - [ ] Historial de cierres del Corte (lista de semanas cerradas).
 - [ ] Exportar a Excel desde Servicios Externos (opcional).
 - [ ] Historial de semanas cerradas en Servicios Externos.
+- [ ] Optimización del filtro de fechas de Gmail (pre-filtro IMAP grueso
+      o caché por headers) si el volumen de correos crece.

@@ -1,3 +1,212 @@
+# Sesión de trabajo — 2026-11-07 (VetSuite Web v0.9)
+
+## Resumen
+
+Sesión enfocada en **Ingresos** (filtro de fechas de Gmail, visor de
+PDF/XML, re-clasificación de sucursales, regex de serie) y en **UI**
+(iconos Tabler, color del activo en sidebar, tabla full-height).
+
+Se completó:
+- Fix del filtro de fechas de Gmail (header `Date:` en Python).
+- Fix del regex de serie para `PRADOS` sin `/` y con espacio.
+- Endpoint `POST /ingresos/reclasificar-sucursales`.
+- Endpoints `GET /ingresos/ver-pdf/{id}` y `GET /ingresos/ver-xml/{id}`.
+- Doble clic en fila de Ingresos: PDF; Ctrl/Cmd+doble clic: XML.
+- Tabla de Ingresos full-height.
+- Iconos Tabler en sidebar y botones (reemplazo de emojis).
+- Color del módulo activo en el sidebar.
+- Fix del activo de Permisos IP (URL `/admin` vs nombre interno `admin_ips`).
+
+## Qué se hizo
+
+### 1. Filtro de fechas de Gmail
+
+**Problema**: el filtro de rango de fechas descargaba todo. El `search` de
+IMAP se hacía con `SINCE`/`BEFORE`, pero Gmail los ignora o los aplica
+sobre `INTERNALDATE` (fecha de entrega), no sobre el header `Date:`.
+
+**Fix**:
+- El `search` de IMAP solo lleva `UNSEEN`, `FROM` y `ALL`, pasados como
+  argumentos sueltos (`mail.search(None, *criterios)`).
+- El filtro de fechas se hace en Python:
+  `parsedate_to_datetime(msg.get("Date")).date()`.
+- Se aplica **antes** del chequeo de caché y del filtro de remitente.
+- `info["omitidos_fecha"]` cuenta los descartados.
+- El log del job muestra `Fuera de rango (fecha < >). Se omite. Asunto: ...`.
+
+### 2. Regex de serie tolerante
+
+**Problema**: asuntos como `prados268-267` o `PRADOS 270-269` (sin `/`)
+no se reconocían y la factura caía en `_sin_sucursal`.
+
+**Fix**: regex nuevo en `correo_facturas.py`:
+
+    r"\b(S1|PRADOS?)\b[\/\s\-]*(\d+)"
+
+Acepta `S1`, `Prado`, `Prados` con o sin `/`, espacio o guion. Normaliza
+`PRADO` → `PRADOS` y quita ceros a la izquierda. Si no encuentra serie
+conocida, cae a un regex genérico `([A-Za-z0-9]+)\s*-\s*(\d+)`.
+
+### 3. Re-clasificación de sucursales
+
+**Problema**: facturas ya guardadas como `_sin_sucursal` no se podían
+corregir en masa.
+
+**Fix**: endpoint `POST /ingresos/reclasificar-sucursales`:
+- Recorre facturas con `sucursal` vacía o `_sin_sucursal`.
+- Para cada una: busca su XML, lee `Serie` con `leer_xml_factura()`,
+  aplica `serie_a_sucursal(serie)`.
+- `S1` → Baalak, `PRADO`/`PRADOS` → Prado. Otras series no se tocan.
+- Actualiza la BD y mueve los archivos a la carpeta correcta.
+- Botón en el menú ⋯ Más de Ingresos.
+
+### 4. Visor PDF/XML
+
+**Nuevo**:
+- `GET /ingresos/ver-pdf/{id}` → PDF `inline`.
+- `GET /ingresos/ver-xml/{id}` → XML `inline`.
+- Helper `_buscar_archivo(row, extension)`:
+  1. Busca por folio en la sucursal de la fila.
+  2. Fallback por UUID.
+  3. Fallback en cualquier sucursal.
+- `404` si el archivo no está en disco.
+- Headers: `Content-Disposition: inline`, `Cache-Control: no-store`.
+
+### 5. Doble clic en fila
+
+- El `<tr>` lleva `data-id="{{ r.id }}"` y `style="cursor: pointer;"`.
+- `dblclick` normal → `/ingresos/ver-pdf/{id}` en pestaña nueva.
+- `Ctrl/Cmd + dblclick` → `/ingresos/ver-xml/{id}`.
+
+### 6. Tabla full-height
+
+- En `ingresos.html`, el card de la tabla lleva `class="card tabla-full"`.
+- En `style.css`: `.page-wrapper > .page-body`, `.page-body > .container-xl`,
+  `.card.tabla-full` y `.card.tabla-full .tabla-scroll` con flex.
+- Solo aplica a Ingresos. Otras páginas conservan su `.tabla-scroll`.
+- Nota: en algunas pantallas aún se sale un poco; se dejó así por ahora.
+
+### 7. Iconos Tabler
+
+- Se cargó el webfont en `base.html`:
+
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+
+- Sidebar: `ti-inbox`, `ti-send`, `ti-chart-histogram`, `ti-tools`,
+  `ti-calendar-event`, `ti-shield-lock`, `ti-paw`.
+- Botones: `ti-mail` o `ti-download` (Gmail), `ti-eye` o `ti-list`
+  (Ver registros), `ti-file-excel` (Excel), `ti-brand-whatsapp-filled`
+  (Enviar), `ti-x` (Desmarcar), `ti-trash` o `ti-refresh` (Reset).
+
+### 8. Color del módulo activo en sidebar
+
+En `style.css`:
+
+    .navbar-vertical .nav-item.active > .nav-link {
+        background-color: #206bc4;
+        color: #ffffff;
+    }
+    .navbar-vertical .nav-item.active > .nav-link .nav-link-icon,
+    .navbar-vertical .nav-item.active > .nav-link .nav-link-title {
+        color: #ffffff;
+    }
+
+### 9. Item activo de Permisos IP
+
+**Problema**: el `<li>` nunca se marcaba como activo. La condición en
+`base.html` era `request.url.path.startswith('/admin_ips')` (con guion
+bajo), pero la URL real es `/admin/ips` (con slash). El nombre interno
+del módulo (`admin_ips`) es independiente de la URL pública.
+
+**Fix**: en `base.html`, cambiar el `startswith` a `/admin` (o
+`/admin/ips`):
+
+    {% if request.url.path.startswith('/admin') %}active{% endif %}
+
+## Bugs resueltos en esta sesión
+
+- **Filtro de fechas de Gmail descargaba todo**: `SINCE`/`BEFORE` de IMAP
+  no funcionan en Gmail (ignoran o aplican sobre `INTERNALDATE`). Fix:
+  filtrar en Python por header `Date:`.
+- **`document.querySelector('input[name="desde"]')` agarraba el input
+  del filtro de la tabla, no el del modal**: había dos inputs con el
+  mismo `name` en la página. Fix: usar `modalDescarga.querySelector(...)`.
+- **Facturas `prados268-267` caían en `_sin_sucursal`**: el regex viejo
+  no reconocía `Prados` sin `/`. Fix: regex tolerante
+  `\b(S1|PRADOS?)\b[\/\s\-]*(\d+)`.
+- **Item activo de Permisos IP no se marcaba**: comparaba contra
+  `/admin_ips` (nombre interno) en vez de `/admin/ips` (URL). Fix:
+  `startswith('/admin')`.
+- **`304 Not Modified` en `style.css`**: no es un error, es caché del
+  navegador. Fix: forzar recarga con Ctrl+Shift+R (Cmd+Shift+R en Mac).
+- **Tabla de Ingresos dejaba espacio blanco abajo en pantalla grande**:
+  el `.tabla-scroll` tenía `max-height: calc(100vh - 380px)` fijo. Fix:
+  `.card.tabla-full` con flex y `max-height: none` para el scroll interno.
+
+## Estado actual
+
+### Funcional
+- ✅ Ingresos con filtro de fechas de Gmail correcto.
+- ✅ Visor PDF/XML (doble clic / Ctrl+doble clic).
+- ✅ Re-clasificación de sucursales en masa.
+- ✅ Regex de serie tolerante.
+- ✅ Iconos Tabler en sidebar y botones.
+- ✅ Color del módulo activo en sidebar.
+- ✅ Tabla de Ingresos full-height.
+- ✅ Todos los módulos anteriores siguen funcionando (Egresos,
+  Recordatorios, Servicios Externos, Corte Semanal, Catálogo QVET).
+
+### Pendiente (Ingresos)
+- Optimización del filtro de fechas si el volumen de correos crece
+  (pre-filtro IMAP grueso o caché por headers).
+- Tests automáticos del filtro y del regex.
+
+### Pendiente (global, arrastrado)
+- Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
+- Documentar instalación en Windows 11.
+- Revisar `iicio.txt` y borrarlo.
+- Tests automáticos (Recordatorios, Ingresos, Egresos, Corte, Servicios
+  Externos).
+- Arranque automático con el sistema.
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Si uvicorn no recarga un cambio de CSS/JS, forzar recarga en el
+  navegador con Ctrl+Shift+R (Cmd+Shift+R en Mac). Un `304 Not Modified`
+  es normal (el archivo no cambió para el navegador).
+- Probar Ingresos: `http://127.0.0.1:8000/ingresos`
+- Probar Corte Semanal: `http://127.0.0.1:8000/corte_semanal`
+- Probar Servicios Externos: `http://127.0.0.1:8000/servicios_externos`
+- Probar Catálogo: `http://127.0.0.1:8000/ingresos/catalogo`
+
+## Reglas nuevas (Ingresos / UI)
+
+57. El filtro de fechas de Gmail se hace en Python sobre el header
+    `Date:`, no con `SINCE`/`BEFORE` de IMAP.
+58. El `search` de IMAP solo lleva `UNSEEN`, `FROM` y `ALL`, pasados como
+    argumentos sueltos.
+59. El filtro de fecha se aplica ANTES del caché y del filtro de
+    remitente.
+60. El regex de serie del asunto es
+    `\b(S1|PRADOS?)\b[\/\s\-]*(\d+)`. Acepta con/sin `/`, espacio o
+    guion. Normaliza `PRADO` → `PRADOS`.
+61. `/reclasificar-sucursales` solo mueve a Baalak/Prado cuando el XML
+    dice `S1` o `Prado(s)`.
+62. El visor de archivos sirve `inline` con `Cache-Control: no-store` y
+    fallback por UUID y por cualquier sucursal.
+63. Doble clic en fila de Ingresos abre PDF; Ctrl/Cmd + doble clic abre
+    XML.
+64. El item activo del sidebar compara `request.url.path` (URL), NO el
+    nombre interno del módulo.
+65. Los iconos del sidebar y botones usan Tabler Icons
+    (`<i class="ti ti-<nombre>"></i>`), no emojis.
+66. La tabla de Ingresos usa `.card.tabla-full` + `.tabla-scroll` para
+    ocupar el alto restante. Otras páginas conservan su `.tabla-scroll`
+    original.
+67. Si uvicorn no recarga CSS/JS, forzar recarga en el navegador. Un
+    `304 Not Modified` es normal.
+
 # Sesión de trabajo — 2026-11-05 (VetSuite Web v0.8)
 
 ## Resumen
