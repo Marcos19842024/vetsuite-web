@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}VetSuite Web{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
     <link href="/static/style.css" rel="stylesheet">
     {% block head %}{% endblock %}
 </head>
@@ -17,14 +18,14 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <h1 class="navbar-brand navbar-brand-autodark">
-                    <span style="font-size: 1.15rem; font-weight: 600;">🐾 VetSuite</span>
+                    <span style="font-size: 1.15rem; font-weight: 600;"><i class="ti ti-paw me-1" style="font-size: 1.25rem;"></i> VetSuite</span>
                 </h1>
                 <div class="collapse navbar-collapse" id="sidebar-menu">
                     <ul class="navbar-nav pt-lg-3">
                         {% if 'ingresos' in __mods %}
                             <li class="nav-item {% if request.url.path.startswith('/ingresos') %}active{% endif %}">
                                 <a class="nav-link" href="/ingresos">
-                                    <span class="nav-link-icon">📥</span>
+                                    <span class="nav-link-icon"><i class="ti ti-inbox" style="font-size: 1.25rem;"></i></span>
                                     <span class="nav-link-title">Ingresos</span>
                                 </a>
                             </li>
@@ -33,7 +34,7 @@
                         {% if 'egresos' in __mods %}
                             <li class="nav-item {% if request.url.path.startswith('/egresos') %}active{% endif %}">
                                 <a class="nav-link" href="/egresos">
-                                    <span class="nav-link-icon">📤</span>
+                                    <span class="nav-link-icon"><i class="ti ti-send" style="font-size: 1.25rem;"></i></span>
                                     <span class="nav-link-title">Egresos</span>
                                 </a>
                             </li>
@@ -42,7 +43,7 @@
                         {% if 'corte semanal' in __mods %}
                             <li class="nav-item {% if request.url.path.startswith('/corte_semanal') %}active{% endif %}">
                                 <a class="nav-link" href="/corte_semanal">
-                                    <span class="nav-link-icon">📊</span>
+                                    <span class="nav-link-icon"><i class="ti ti-chart-histogram" style="font-size: 1.25rem;"></i></span>
                                     <span class="nav-link-title">Corte Semanal</span>
                                 </a>
                             </li>
@@ -51,7 +52,7 @@
                         {% if 'servicios externos' in __mods %}
                             <li class="nav-item {% if request.url.path.startswith('/servicios_externos') %}active{% endif %}">
                                 <a class="nav-link" href="/servicios_externos">
-                                    <span class="nav-link-icon">🔧</span>
+                                    <span class="nav-link-icon"><i class="ti ti-truck" style="font-size: 1.25rem;"></i></span>
                                     <span class="nav-link-title">Servicios Externos</span>
                                 </a>
                             </li>
@@ -60,7 +61,7 @@
                         {% if 'recordatorios' in __mods %}
                             <li class="nav-item {% if request.url.path.startswith('/recordatorios') %}active{% endif %}">
                                 <a class="nav-link" href="/recordatorios">
-                                    <span class="nav-link-icon">📅</span>
+                                    <span class="nav-link-icon"><i class="ti ti-calendar" style="font-size: 1.25rem;"></i></span>
                                     <span class="nav-link-title">Recordatorios</span>
                                 </a>
                             </li>
@@ -68,8 +69,8 @@
 
                         {% if es_admin_ip(request) %}
                             <li class="nav-item {% if request.url.path.startswith('/admin_ips') %}active{% endif %}">
-                                    <a class="nav-link" href="/admin/ips">
-                                    <span class="nav-link-icon">🔐</span>
+                                <a class="nav-link" href="/admin_ips">
+                                    <span class="nav-link-icon"><i class="ti ti-key" style="font-size: 1.25rem;"></i></span>
                                     <span class="nav-link-title">Permisos IP</span>
                                 </a>
                             </li>

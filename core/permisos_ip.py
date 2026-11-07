@@ -11,7 +11,7 @@ _DEFAULT = {
             "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios"],
         }
     },
-    "admin_ips": ["127.0.0.1"],
+    "admin ips": ["127.0.0.1"],
     "default_deny": True,
 }
 
@@ -38,7 +38,7 @@ def cargar() -> dict:
         return json.loads(json.dumps(_DEFAULT))
 
     data.setdefault("modulos", list(_DEFAULT["modulos"]))
-    data.setdefault("admin_ips", ["127.0.0.1"])
+    data.setdefault("admin ips", ["127.0.0.1"])
     data.setdefault("default_deny", True)
 
     # Normaliza el diccionario de IPs al formato {ip: {nombre, modulos}}
@@ -68,7 +68,7 @@ def modulos_permitidos(ip: str) -> list:
 
 
 def es_admin(ip: str) -> bool:
-    return ip in cargar().get("admin_ips", [])
+    return ip in cargar().get("admin ips", [])
 
 
 def modulo_de_path(path: str):

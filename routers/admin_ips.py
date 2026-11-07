@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from core import permisos_ip
 from templates_shared import templates
 
-router = APIRouter(prefix="/admin/ips", tags=["admin"])
+router = APIRouter(prefix="/admin_ips", tags=["admin ips"])
 
 
 @router.get("", response_class=HTMLResponse)
@@ -37,7 +37,7 @@ async def guardar(
     else:
         cfg["ips"][ip] = {"nombre": nombre, "modulos": list(modulos)}
     permisos_ip.guardar(cfg)
-    return RedirectResponse("/admin/ips", status_code=303)
+    return RedirectResponse("/admin_ips", status_code=303)
 
 
 @router.post("/eliminar")
@@ -48,4 +48,4 @@ async def eliminar(request: Request, ip: str = Form(...)):
     cfg = permisos_ip.cargar()
     cfg["ips"].pop(ip, None)
     permisos_ip.guardar(cfg)
-    return RedirectResponse("/admin/ips", status_code=303)
+    return RedirectResponse("/admin_ips", status_code=303)

@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from templates_shared import templates
 
-router = APIRouter(prefix="/config", tags=["config"])
+router = APIRouter(prefix="/config_gmail", tags=["config gmail"])
 GMAIL_CONFIG = Path(__file__).parent.parent / "gmail_config.json"
 
 
@@ -18,7 +18,7 @@ def _leer():
         return {}
 
 
-@router.get("/gmail", response_class=HTMLResponse)
+@router.get("", response_class=HTMLResponse)
 def config_gmail_form(request: Request):
     cfg = _leer()
     return templates.TemplateResponse(
@@ -27,7 +27,7 @@ def config_gmail_form(request: Request):
     )
 
 
-@router.post("/gmail")
+@router.post("")
 def config_gmail_guardar(
     usuario: str = Form(""),
     password_app: str = Form(""),

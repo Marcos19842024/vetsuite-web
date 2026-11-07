@@ -18,7 +18,27 @@ body {
 .navbar-vertical .nav-link:hover,
 .navbar-vertical .nav-link.active {
     color: #fff;
-    background-color: rgba(255,255,255,0.05);
+    background-color: rgba(43, 152, 235, 0.05);
+}
+
+.navbar-vertical .nav-item.active > .nav-link {
+    border-left: 3px solid #ffffff;
+}
+
+/* Color del módulo activo en el sidebar */
+.navbar-vertical .nav-item.active > .nav-link {
+    background-color: #ffb700 !important;   /* azul Tabler; cambia el hex por el que quieras */
+    color: #ffffff !important;;
+}
+
+.navbar-vertical .nav-item.active > .nav-link .nav-link-icon,
+.navbar-vertical .nav-item.active > .nav-link .nav-link-title {
+    color: #ffffff;
+}
+
+/* Opcional: hover sobre items no activos */
+.navbar-vertical .nav-item:not(.active) > .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.06);
 }
 
 /* Inputs más compactos (estilo escritorio) */
@@ -927,4 +947,44 @@ dialog.modal-propio.modal-sm { max-width: 420px; }
     background-color: #e9ecef;
     box-shadow: 0 -1px 0 #dee2e6;
     font-weight: bold;
+}
+
+/* ============================================================
+   Tabla de Ingresos: ocupa el alto restante de la pantalla
+   ============================================================ */
+
+/* 1) El page-body crece y permite que el contenido empuje */
+.page-wrapper > .page-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* 2) El container-xl ocupa el alto restante y se vuelve flex column */
+.page-body > .container-xl {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* 3) El card de la tabla crece */
+.card.tabla-full {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;       /* opcional: pega al fondo */
+}
+
+/* 4) El scroll interno usa el alto disponible */
+.card.tabla-full .tabla-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;   /* anula el calc(100vh - 380px) viejo */
+    overflow: auto;
+}
+
+.page-wrapper {
+    overflow: hidden;
 }

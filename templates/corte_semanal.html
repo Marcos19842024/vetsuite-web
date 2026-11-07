@@ -35,7 +35,7 @@
             <a
               href="/corte_semanal/excel?anio={{ anio }}&semana={{ semana }}"
               class="btn btn-outline-success btn-sm">
-              📊 Exportar Excel
+              <i class="ti ti-file-excel me-1" style="font-size: 1.15rem;"></i> Exportar Excel
             </a>
           {% else %}
             <button type="button" class="btn btn-sm btn-outline-primary" id="btn-cerrar-semana">
@@ -45,7 +45,7 @@
           <button
             type="button" class="btn btn-outline-secondary btn-sm"
             onclick="abrirModalReportes()">
-            📋 Ver registros
+            <i class="ti ti-list me-1" style="font-size: 1.25rem;"></i> Ver registros
           </button>
         </div>
       </div>
@@ -56,13 +56,13 @@
       <div class="d-flex align-items-center gap-2">
         <a class="btn btn-sm btn-ghost-secondary"
           href="/corte_semanal?anio={{ anio }}&semana={{ semana - 1 if semana > 1 else 52 }}">
-          ⬅️
+          <i class="ti ti-arrow-left" style="font-size: 1.25rem;"></i>
         </a>
         <input type="week" id="semana-picker" class="form-control form-control-sm"
               value="{{ '%04d-W%02d' % (anio, semana) }}" style="width:180px">
         <a class="btn btn-sm btn-ghost-secondary"
           href="/corte_semanal?anio={{ anio }}&semana={{ semana + 1 if semana < 53 else 1 }}">
-          ➡️
+          <i class="ti ti-arrow-right" style="font-size: 1.25rem;"></i>
         </a>
       </div>
     </div>
@@ -1065,7 +1065,7 @@ window.CORTE = {
 <dialog id="modal-reportes-corte" style="max-width: 760px; width: 92vw;">
   <div class="modal-content">
     <div class="modal-header">
-      <h5 class="modal-title">📊 Semanas del Corte</h5>
+      <h5 class="modal-title"><i class="ti ti-list me-1" style="font-size: 1.25rem;"></i> Semanas del Corte</h5>
       <button type="button" class="btn-close btn-sm"
               onclick="document.getElementById('modal-reportes-corte').close()"></button>
     </div>

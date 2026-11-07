@@ -22,15 +22,15 @@
                 <div class="btn-list">
                     {% if job_activo %}
                     <button type="button" class="btn btn-warning btn-sm" onclick="abrirModalDescarga()">
-                        ⏳ Descarga en proceso...
+                        <i class="ti ti-clock me-1"></i> Descarga en proceso...
                     </button>
                     {% elif solicitud_pendiente %}
                     <button type="button" class="btn btn-info btn-sm" onclick="abrirModalDescarga()">
-                        🔄 Retomar solicitud
+                        <i class="ti ti-refresh me-1" style="font-size: 1.15rem;"></i> Retomar solicitud
                     </button>
                     {% else %}
                     <button type="button" class="btn btn-outline-primary btn-sm" onclick="abrirModalDescarga()" {% if not configurado %}disabled title="Configura e.firma primero"{% endif %}>
-                        📥 Descargar del SAT
+                        <i class="ti ti-cloud-download me-1" style="font-size: 1.15rem;"></i> Descargar del SAT
                     </button>
                     {% endif %}
                 </div>
@@ -38,11 +38,11 @@
             <button
                 type="button" class="btn btn-outline-secondary btn-sm"
                 onclick="abrirModalReportes()">
-                📋 Ver registros
+                <i class="ti ti-list me-1" style="font-size: 1.15rem;"></i> Ver registros
             </button>
             <span class="vr mx-2"></span>
             <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('modal-zip').showModal()">
-                📦 ZIP mensual
+                <i class="ti ti-package me-1" style="font-size: 1.15rem;"></i> ZIP mensual
             </button>
         </div>
 
@@ -55,13 +55,15 @@
                     ⋯ Más
                 </button>
                 <div class="dropdown-menu dropdown-menu-end">
-                    <a class="dropdown-item" href="/egresos/historial">📚 Historial del SAT</a>
+                    <a class="dropdown-item" href="/egresos/historial">
+                        <i class="ti ti-history me-1" style="font-size: 1.15rem;"></i> Historial del SAT
+                    </a>
                     <a class="dropdown-item d-flex justify-content-between" href="/egresos/rechazados">
-                        ⚠️ Rechazados
+                        <i class="ti ti-x me-1" style="font-size: 1.15rem;"></i> Rechazados
                     </a>
                     <div class="dropdown-divider"></div>
                     <form method="post" action="/egresos/reset" onsubmit="return confirmarReset(event)">
-                        <button type="submit" class="dropdown-item text-danger">🗑️ Reset Egresos</button>
+                        <button type="submit" class="dropdown-item text-danger"><i class="ti ti-trash me-1" style="font-size: 1.15rem;"></i> Reset Egresos</button>
                     </form>
                 </div>
             </div>
@@ -192,7 +194,7 @@
 <dialog id="modal-descarga-sat" {% if job_activo %}data-job-id="{{ job_activo.id }}"{% endif %}>
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">📥 Descargar facturas del SAT</h5>
+            <h5 class="modal-title"><i class="ti ti-cloud-download me-1" style="font-size: 1.15rem;"></i> Descargar facturas del SAT</h5>
             <button type="button" class="btn-close btn-sm" onclick="cerrarModalDescarga()"></button>
         </div>
         <div class="modal-body">
@@ -208,7 +210,7 @@
                 </span>
                 <button type="button" class="btn btn-sm btn-outline-secondary"
                         onclick="document.getElementById('modal-descarga-sat').close(); document.getElementById('modal-config-efirma').showModal();">
-                    ⚙️ Editar credenciales
+                    <i class="ti ti-settings me-1" style="font-size: 1.15rem;"></i> Editar credenciales
                 </button>
             </div>
             <hr class="my-3">
@@ -246,11 +248,11 @@
         </div>
         <div class="modal-footer" id="footer-modal-sat">
             {% if solicitud_pendiente and not job_activo %}
-            <button type="button" class="btn btn-info btn-sm" onclick="retomarSolicitud()">🔄 Retomar solicitud</button>
+            <button type="button" class="btn btn-info btn-sm" onclick="retomarSolicitud()"><i class="ti ti-reload me-1" style="font-size: 1.15rem;"></i> Retomar solicitud</button>
             {% endif %}
             <button type="button" id="btn-iniciar-sat" class="btn btn-primary btn-sm" onclick="iniciarDescargaSAT()"
                     {% if not configurado %}disabled title="Configura e.firma primero"{% endif %}>
-                📥 Iniciar descarga
+                Iniciar descarga
             </button>
         </div>
     </div>
@@ -262,7 +264,7 @@
 <dialog id="modal-config-efirma">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">⚙️ Configuración de e.firma (SAT)</h5>
+            <h5 class="modal-title"><i class="ti ti-settings me-1" style="font-size: 1.15rem;"></i> Configuración de e.firma (SAT)</h5>
             <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-config-efirma').close(); document.getElementById('modal-descarga-sat').showModal();"></button>
         </div>
         <form id="form-config-efirma" enctype="multipart/form-data">
@@ -301,7 +303,7 @@
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="probarFiel()">
                     🔑 Probar FIEL
                 </button>
-                <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
+                <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
             </div>
         </form>
     </div>
@@ -313,7 +315,7 @@
 <dialog id="modal-zip">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">📦 Descargar ZIP mensual</h5>
+            <h5 class="modal-title"><i class="ti ti-package me-1" style="font-size: 1.15rem;"></i> Descargar ZIP mensual</h5>
             <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-zip').close()"></button>
         </div>
         <form method="get" action="/egresos/zip">
@@ -342,7 +344,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="submit" class="btn btn-success btn-sm">📦 Descargar ZIP</button>
+                <button type="submit" class="btn btn-success btn-sm"> Descargar ZIP</button>
             </div>
         </form>
     </div>
@@ -354,7 +356,7 @@
 <dialog id="modal-reportes" style="max-width: 760px; width: 92vw;">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title">📊 Reportes disponibles</h5>
+            <h5 class="modal-title"><i class="ti ti-list me-1" style="font-size: 1.15rem;"></i> Reportes disponibles</h5>
             <button type="button" class="btn-close btn-sm"
                     onclick="document.getElementById('modal-reportes').close()"></button>
         </div>

@@ -4,7 +4,7 @@ import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Form, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Request, Form, UploadFile, File, BackgroundTasks
 from fastapi.responses import (
     HTMLResponse, RedirectResponse, JSONResponse, FileResponse,
 )
@@ -1084,3 +1084,121 @@ def eliminar_override(producto: str = Form(...)):
         recargar_catalogo()
         return JSONResponse({"ok": True})
     return JSONResponse({"ok": False, "error": "no existe el override"}, status_code=404)
+
+
+@router.post("/reclasificar-sucursales")
+def reclasificar_sucursales():
+    conn = get_conn()
+    pendientes = conn.execute(
+        "SELECT id, fecha, folio, folio_fiscal, sucursal FROM ingresos "
+        "WHERE sucursal IS NULL OR sucursal = '' OR sucursal = '_sin_sucursal'"
+    ).fetchall()
+
+    actualizadas = 0
+    errores = []
+
+    for p in pendientes:
+        try:
+            anio, mes = um._mes_de_fecha(p["fecha"])
+            nombre_base = str(p["folio"] or p["folio_fiscal"] or "").strip()
+            xml_path, _ = um.buscar_archivos_factura(anio, mes, "", nombre_base)
+            if not xml_path and p["folio_fiscal"]:
+                xml_path, _ = um.buscar_archivos_factura(anio, mes, "", p["folio_fiscal"])
+            if not xml_path:
+                errores.append(f"ID {p['id']}: sin XML")
+                continue
+
+            from lector_facturas import leer_xml_factura
+            datos = leer_xml_factura(str(xml_path))
+            serie = datos.get("serie", "")
+            sucursal = um.serie_a_sucursal(serie)
+            if sucursal and sucursal != um.SIN_SUCURSAL:
+                conn.execute(
+                    "UPDATE ingresos SET sucursal=? WHERE id=?",
+                    (sucursal, p["id"])
+                )
+                actualizadas += 1
+        except Exception as e:
+            errores.append(f"ID {p['id']}: {e}")
+
+    conn.commit()
+    conn.close()
+
+    resumen = f"Reclasificadas: {actualizadas} | Errores: {len(errores)}"
+    return RedirectResponse(f"/ingresos?resumen={resumen}", status_code=303)
+
+
+# ============================================================
+# VER ARCHIVOS (PDF / XML)
+# ============================================================
+def _buscar_archivo(row, extension):
+    """
+    Devuelve el Path del archivo (xml o pdf) de una factura,
+    o None si no lo encuentra.
+    """
+    anio, mes = um._mes_de_fecha(row["fecha"])
+    sucursal = row["sucursal"] or um.SIN_SUCURSAL
+    nombre_base = str(row["folio"] or row["folio_fiscal"] or "").strip()
+
+    xml_path, pdf_path = um.buscar_archivos_factura(
+        anio, mes, sucursal, nombre_base
+    )
+    # Fallback por UUID
+    if not (xml_path or pdf_path) and row["folio_fiscal"]:
+        xml_path, pdf_path = um.buscar_archivos_factura(
+            anio, mes, sucursal, row["folio_fiscal"]
+        )
+    # Fallback: buscar en cualquier sucursal (por si quedó mal clasificada)
+    if not (xml_path or pdf_path):
+        for suc in um.SUCURSALES_VALIDAS | {um.SIN_SUCURSAL}:
+            xml_path, pdf_path = um.buscar_archivos_factura(
+                anio, mes, suc, nombre_base
+            )
+            if xml_path or pdf_path:
+                break
+
+    return xml_path if extension == ".xml" else pdf_path
+
+
+@router.get("/ver-pdf/{id}")
+def ver_pdf(id: int):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM ingresos WHERE id=?", (id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Factura no encontrada")
+
+    pdf_path = _buscar_archivo(row, ".pdf")
+    if not pdf_path or not Path(pdf_path).exists():
+        raise HTTPException(404, "PDF no encontrado en disco")
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{Path(pdf_path).name}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/ver-xml/{id}")
+def ver_xml(id: int):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM ingresos WHERE id=?", (id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Factura no encontrada")
+
+    xml_path = _buscar_archivo(row, ".xml")
+    if not xml_path or not Path(xml_path).exists():
+        raise HTTPException(404, "XML no encontrado en disco")
+
+    return FileResponse(
+        xml_path,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f'inline; filename="{Path(xml_path).name}"',
+            "Cache-Control": "no-store",
+        },
+    )

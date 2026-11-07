@@ -79,11 +79,11 @@
                                     onclick='editarIP({{ ip|tojson }}, {{ entrada.nombre|tojson }}, {{ entrada.modulos|tojson }})'>
                                 Editar
                             </button>
-                            <form method="post" action="/admin/ips/eliminar"
+                            <form method="post" action="/admin_ips/eliminar"
                                   style="display:inline"
                                   onsubmit="return confirm('¿Eliminar la IP {{ ip }}?')">
                                 <input type="hidden" name="ip" value="{{ ip }}">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash me-1" style="font-size: 1.15rem;"></i></button>
                             </form>
                         </div>
                     </td>
@@ -109,7 +109,7 @@
             <h5 class="modal-title" id="modal-ip-titulo">Agregar IP</h5>
             <button type="button" class="btn-close btn-sm" onclick="cerrarModal()"></button>
         </div>
-        <form method="post" action="/admin/ips/guardar">
+        <form method="post" action="/admin_ips/guardar">
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">Dirección IP</label>
@@ -140,7 +140,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="submit" class="btn btn-primary btn-sm">💾 Guardar</button>
+                <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
             </div>
         </form>
     </div>

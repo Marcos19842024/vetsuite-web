@@ -86,9 +86,13 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
                               callback_cancelado=None):
     """
     fecha_desde, fecha_hasta: strings 'YYYY-MM-DD' (o None).
-    Si fecha_hasta está presente, se le suma 1 día porque IMAP BEFORE
-    es exclusivo.
+    El filtro de fecha se hace en Python sobre el header 'Date:' del correo,
+    NO con SINCE/BEFORE de IMAP (Gmail los ignora o los aplica mal).
     """
+    from email.utils import parsedate_to_datetime
+
+    # print(f"[DEBUG] descargar_adjuntos_gmail fecha_desde={fecha_desde!r} fecha_hasta={fecha_hasta!r}")
+
     ruta_log = _ruta_log()
     archivo_log = open(ruta_log, "w", encoding="utf-8")
 
@@ -125,11 +129,28 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
         "procesados": 0,
         "omitidos_cache": 0,
         "omitidos_filtros": 0,
+        "omitidos_fecha": 0,
         "log": str(ruta_log),
     }
 
     cache_ids = cargar_cache_correos() if usar_cache else set()
     ids_procesados_esta_vez = set()
+
+    # --- Preparsear fechas del filtro ---
+    fecha_desde_dt = None
+    fecha_hasta_dt = None
+    if fecha_desde:
+        try:
+            fecha_desde_dt = datetime.strptime(fecha_desde[:10], "%Y-%m-%d").date()
+            log(f"Filtro desde (header Date): {fecha_desde_dt}")
+        except ValueError:
+            log(f"fecha_desde invalida: {fecha_desde}")
+    if fecha_hasta:
+        try:
+            fecha_hasta_dt = datetime.strptime(fecha_hasta[:10], "%Y-%m-%d").date()
+            log(f"Filtro hasta (header Date): {fecha_hasta_dt}")
+        except ValueError:
+            log(f"fecha_hasta invalida: {fecha_hasta}")
 
     try:
         progreso("Conectando a Gmail...")
@@ -147,45 +168,27 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
             errores.append(f"No se pudo abrir la etiqueta '{etiqueta}'")
             return descargados, errores, info
 
-        # ---- Criterios de búsqueda ----
-        # imaplib espera los criterios como argumentos separados, NO como
-        # un solo string con paréntesis. Si se pasa "(SINCE ... BEFORE ...)"
-        # Gmail ignora el filtro y devuelve TODO.
+        # ---- Criterios de búsqueda IMAP ----
+        # IMPORTANTE: NO usar SINCE/BEFORE. Gmail los ignora o los aplica
+        # sobre INTERNALDATE (fecha de entrega), no sobre el header Date:.
+        # El filtro de fecha real se hace en Python mas abajo.
         criterios = []
         if solo_no_leidos:
             criterios.append("UNSEEN")
-
-        imap_desde = _fecha_imap_desde_iso(fecha_desde)
-        if imap_desde:
-            criterios.extend(["SINCE", imap_desde])
-            log(f"Filtro desde: {imap_desde}")
-
-        if fecha_hasta:
-            imap_hasta_base = _fecha_imap_desde_iso(fecha_hasta)
-            if imap_hasta_base:
-                try:
-                    dt = datetime.strptime(fecha_hasta[:10], "%Y-%m-%d")
-                    dt_mas = dt + timedelta(days=1)
-                    meses = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                    imap_hasta = (f"{dt_mas.day:02d}-"
-                                  f"{meses[dt_mas.month-1]}-{dt_mas.year}")
-                except ValueError:
-                    imap_hasta = imap_hasta_base
-                criterios.extend(["BEFORE", imap_hasta])
-                log(f"Filtro hasta: {imap_hasta} (exclusivo, +1 dia)")
 
         if filtro_remitente:
             rem = filtro_remitente.strip()
             if " " in rem:
                 rem = f'"{rem}"'
             criterios.extend(["FROM", rem])
+            log(f"Filtro de remitente (IMAP): {rem}")
 
         if not criterios:
             criterios = ["ALL"]
 
         progreso("Buscando correos en la etiqueta...")
         log(f"Buscando correos con criterios: {criterios}")
+        # print(f"[DEBUG] criterios IMAP = {criterios}")
         status, data = mail.search(None, *criterios)
         if status != "OK":
             errores.append("Error al buscar correos")
@@ -193,10 +196,10 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
 
         ids = data[0].split()
         info["total_correos"] = len(ids)
-        log(f"Correos encontrados: {len(ids)}")
+        log(f"Correos encontrados (sin filtro de fecha): {len(ids)}")
 
         if not ids:
-            progreso("No hay correos en el rango.")
+            progreso("No hay correos en la etiqueta.")
             return descargados, errores, info
 
         total_correos = len(ids)
@@ -223,41 +226,83 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
                 raw_email = msg_data[0][1] # type: ignore
                 msg = email.message_from_bytes(raw_email) # type: ignore
 
+                asunto = _decodificar_cabecera(msg.get("Subject", ""))
+                remitente = _decodificar_cabecera(msg.get("From", ""))
+
+                # ---- Filtro de fecha por header Date: (confiable) ----
+                if fecha_desde_dt or fecha_hasta_dt:
+                    fecha_header = msg.get("Date")
+                    fecha_correo = None
+                    if fecha_header:
+                        try:
+                            dt_correo = parsedate_to_datetime(fecha_header)
+                            if dt_correo is not None:
+                                fecha_correo = dt_correo.date()
+                        except Exception:
+                            fecha_correo = None
+
+                    if fecha_correo is None:
+                        info["omitidos_fecha"] += 1
+                        log(f"[{i}/{len(ids)}] Sin Date parseable. Se omite. Asunto: {asunto[:60]}")
+                        continue
+
+                    if fecha_desde_dt and fecha_correo < fecha_desde_dt:
+                        info["omitidos_fecha"] += 1
+                        log(f"[{i}/{len(ids)}] Fuera de rango ({fecha_correo} < {fecha_desde_dt}). Se omite. Asunto: {asunto[:60]}")
+                        continue
+
+                    if fecha_hasta_dt and fecha_correo > fecha_hasta_dt:
+                        info["omitidos_fecha"] += 1
+                        log(f"[{i}/{len(ids)}] Fuera de rango ({fecha_correo} > {fecha_hasta_dt}). Se omite. Asunto: {asunto[:60]}")
+                        continue
+
+                # ---- Cache ----
                 message_id = (msg.get("Message-ID") or "").strip()
                 if usar_cache and message_id and message_id in cache_ids:
                     log(f"[{i}/{len(ids)}] Ya procesado (cache). Se omite.")
                     info["omitidos_cache"] += 1
                     continue
 
-                asunto = _decodificar_cabecera(msg.get("Subject", ""))
-                remitente = _decodificar_cabecera(msg.get("From", ""))
                 log(f"[{i}/{len(ids)}] Asunto: {asunto}")
 
                 qvet_detectado = ""
                 no_factura_detectado = ""
-                m_asunto = re.search(
-                    r"([A-Za-z0-9]+(?:/[A-Za-z0-9]+)?)\s*-\s*(\d+)",
+
+                # Regex tolerante: S1, Prado, Prados (con o sin /, espacio o guion)
+                # Ejemplos que debe capturar:
+                #   "Factura de venta S1/08511-8363"     -> S1 + 08511
+                #   "Factura de venta Prados/00265-264"  -> PRADOS + 00265
+                #   "Factura de venta prados268-267"     -> PRADOS + 268
+                #   "Factura de venta PRADOS 270-269"    -> PRADOS + 270
+                #   "Factura de venta S1/8527"           -> S1 + 8527
+                m_serie = re.search(
+                    r"\b(S1|PRADOS?)\b[\/\s\-]*(\d+)",
                     asunto, re.IGNORECASE
                 )
-                if m_asunto:
-                    serie_completa = m_asunto.group(1).strip()
-                    folio_str = m_asunto.group(2).strip()
+                if m_serie:
+                    serie_norm = m_serie.group(1).strip().upper()
+                    if serie_norm == "PRADO":
+                        serie_norm = "PRADOS"
+                    folio_str = m_serie.group(2).strip()
                     if folio_str.isdigit():
-                        no_factura_detectado = str(int(folio_str))
-                    else:
-                        no_factura_detectado = folio_str
-                    if "/" in serie_completa:
-                        serie_parte, num_parte = serie_completa.split("/", 1)
-                        serie_norm = serie_parte.strip().upper()
-                        if serie_norm == "PRADO":
-                            serie_norm = "PRADOS"
-                        num_parte = num_parte.strip()
-                        if num_parte.isdigit():
-                            num_parte = str(int(num_parte))
-                        qvet_detectado = f"{serie_norm}/{num_parte}"
-                    else:
-                        qvet_detectado = serie_completa.upper()
+                        folio_str = str(int(folio_str))   # quitar ceros a la izq
+                    no_factura_detectado = folio_str
+                    qvet_detectado = f"{serie_norm}/{folio_str}"
+                else:
+                    # Fallback: buscar cualquier "SERIE-FOLIO" genérico
+                    m_asunto = re.search(
+                        r"([A-Za-z0-9]+)\s*-\s*(\d+)",
+                        asunto, re.IGNORECASE
+                    )
+                    if m_asunto:
+                        serie_generica = m_asunto.group(1).strip().upper()
+                        folio_gen = m_asunto.group(2).strip()
+                        if folio_gen.isdigit():
+                            folio_gen = str(int(folio_gen))
+                        no_factura_detectado = folio_gen
+                        qvet_detectado = f"{serie_generica}/{folio_gen}"
 
+                # Filtro de remitente en Python (doble seguro)
                 if filtro_remitente:
                     if filtro_remitente.lower() not in remitente.lower():
                         info["omitidos_filtros"] += 1

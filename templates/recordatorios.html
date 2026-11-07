@@ -31,21 +31,34 @@
 <div class="card mb-3">
     <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
         <div class="btn-list">
-            <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#modalImportar">
-                📊 Importar Excel
+            <button
+                class="btn btn-outline-success btn-sm"
+                data-bs-toggle="modal"
+                data-bs-target="#modalImportar">
+                <i
+                    class="ti ti-file-excel me-1"
+                    style="font-size: 1.15rem;">
+                </i> Importar Excel
             </button>
-            <a href="/recordatorios/excel" class="btn btn-outline-success btn-sm">📊 Exportar Excel</a>
+            <a
+                href="/recordatorios/excel"
+                class="btn btn-outline-success btn-sm">
+                <i
+                    class="ti ti-file-excel me-1"
+                    style="font-size: 1.15rem;">
+                </i> Exportar Excel
+            </a>
 
             <span class="vr mx-2"></span>
 
             <button class="btn btn-outline-success btn-sm" id="btn-accion" disabled>
-                📱 Enviar
+                <i class="ti ti-brand-whatsapp me-1" style="font-size: 1.15rem;"></i> Enviar
             </button>
         </div>
 
         <div class="ms-auto btn-list">
             <form method="post" action="/recordatorios/reset" onsubmit="return confirmarResetYLimpiar(event)" class="d-inline">
-            <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Reset</button>
+            <button type="submit" class="btn btn-outline-danger btn-sm"><i class="ti ti-trash me-1" style="font-size: 1.15rem;"></i> Reset</button>
         </form>
         </div>
     </div>
@@ -309,17 +322,17 @@
     function actualizarBoton() {
         if (!seleccion) {
             btnAccion.disabled = true;
-            btnAccion.textContent = '📱 Enviar';
+            btnAccion.innerHTML = '<i class="ti ti-brand-whatsapp me-1" style="font-size: 1.15rem;"></i> Enviar';
             btnAccion.className = 'btn btn-outline-success btn-sm';
             return;
         }
         const enviado = seleccion.fila.dataset.enviado === '1';
         btnAccion.disabled = false;
         if (enviado) {
-            btnAccion.textContent = '↩️ Desmarcar';
+            btnAccion.innerHTML = '<i class="ti ti-arrow-back-up me-1" style="font-size: 1.15rem;"></i> Desmarcar';
             btnAccion.className = 'btn btn-outline-warning btn-sm';
         } else {
-            btnAccion.textContent = '📱 Enviar';
+            btnAccion.innerHTML = '<i class="ti ti-brand-whatsapp me-1" style="font-size: 1.15rem;"></i> Enviar';
             btnAccion.className = 'btn btn-outline-success btn-sm';
         }
     }

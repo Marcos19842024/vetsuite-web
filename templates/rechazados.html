@@ -55,11 +55,11 @@
                     <td class="text-end btn-list flex-nowrap justify-content-end">
                         {% if item.xml %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
                         {% if item.pdf %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">PDF</a>{% endif %}
-                        <a href="/ingresos/rechazados/rescatar/{{ item.carpeta_rel }}/{{ item.nombre_base }}" class="btn btn-sm btn-success">Rescatar</a>
+                        <a href="/ingresos/rechazados/rescatar/{{ item.carpeta_rel }}/{{ item.nombre_base }}" class="btn btn-sm btn-outline-success">Rescatar</a>
                         <form method="post" action="/ingresos/rechazados/eliminar/rechazados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
                             <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash me-1" style="font-size: 1.25rem;"></i></button>
                         </form>
                     </td>
                 </tr>
@@ -99,7 +99,7 @@
 {% if duplicados %}
 <div class="mb-2">
     <form method="post" action="/ingresos/rechazados/eliminar-todos-duplicados" onsubmit="return confirm('¿Eliminar TODOS los duplicados?')">
-        <button type="submit" class="btn btn-danger btn-sm">🗑️ Eliminar todos ({{ n_duplicados }})</button>
+        <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Eliminar todos ({{ n_duplicados }})</button>
     </form>
 </div>
 {% endif %}
