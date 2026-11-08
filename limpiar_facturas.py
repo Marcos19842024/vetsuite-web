@@ -5,7 +5,7 @@ Limpieza: borra de uploads/facturas/ cualquier archivo que no sea
 import re
 import shutil
 from pathlib import Path
-import uploads_manager as um
+from shared import uploads_manager as um
 
 PATRON = re.compile(r'^\d+\.(xml|pdf|XML|PDF)$', re.IGNORECASE)
 

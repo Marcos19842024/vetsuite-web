@@ -3,8 +3,8 @@ from datetime import date
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import JSONResponse
 
-from templates_shared import templates
-from db import get_conn
+from shared.templates_shared import templates
+from shared.db import get_conn
 from core.servicios_externos import config as cfg_mod
 from core.servicios_externos.semanas import asegurar_semana, semana_actual
 from core.corte_semanal.semanas import semana_de_fecha

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-STATE_FILE = Path(__file__).parent / "jobs_state.json"
+from shared.rutas import JOBS_STATE as STATE_FILE
 
 _jobs = {}
 _lock = threading.Lock()

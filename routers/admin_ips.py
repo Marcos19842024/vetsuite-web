@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core import permisos_ip
-from templates_shared import templates
+from shared.templates_shared import templates
 
 router = APIRouter(prefix="/admin_ips", tags=["admin ips"])
 

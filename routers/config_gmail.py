@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from templates_shared import templates
+from shared.templates_shared import templates
 
 router = APIRouter(prefix="/config_gmail", tags=["config gmail"])
 GMAIL_CONFIG = Path(__file__).parent.parent / "gmail_config.json"

@@ -150,7 +150,7 @@ def guardar_facturas_egresos(facturas, anio):
     Deduplica por UUID.
     Devuelve (nuevas, duplicadas).
     """
-    from db import get_conn
+    from shared.db import get_conn
     from datetime import datetime as dt
 
     conn = get_conn()
@@ -215,7 +215,7 @@ def marcar_animalia(uuid, rfc):
     1. Actualiza el registro en SQLite (sucursal = 'Animalia').
     2. Guarda el RFC en proveedores_sucursal.json para futuras descargas.
     """
-    from db import get_conn
+    from shared.db import get_conn
 
     conn = get_conn()
     conn.execute(

@@ -14,7 +14,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-import uploads_manager as um
+import shared.uploads_manager as um
 from excel_web import generar_excel
 
 

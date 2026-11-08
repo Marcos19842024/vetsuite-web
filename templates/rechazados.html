@@ -3,7 +3,7 @@
 <div class="page-header mb-3">
     <div class="row align-items-center">
         <div class="col">
-            <h2 class="page-title">⚠️ Rechazados, Sin PDF y Duplicados</h2>
+            <h2 class="page-title">Rechazados, Sin PDF y Duplicados</h2>
         </div>
         <div class="col-auto ms-auto d-print-none">
             <a href="/ingresos" class="btn btn-outline-secondary btn-sm">← Volver a Ingresos</a>
@@ -53,13 +53,13 @@
                         {% if item.error %}<pre class="bg-light text-danger p-1 rounded small" style="max-height: 60px; overflow: auto;">{{ item.error[:200] }}</pre>{% else %}<small>—</small>{% endif %}
                     </td>
                     <td class="text-end btn-list flex-nowrap justify-content-end">
-                        {% if item.xml %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
-                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">PDF</a>{% endif %}
+                        {% if item.xml %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-xml" style="font-size: 1.15rem;"></i></a>{% endif %}
+                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-pdf" style="font-size: 1.15rem;"></i></a>{% endif %}
                         <a href="/ingresos/rechazados/rescatar/{{ item.carpeta_rel }}/{{ item.nombre_base }}" class="btn btn-sm btn-outline-success">Rescatar</a>
                         <form method="post" action="/ingresos/rechazados/eliminar/rechazados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
                             <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
-                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash me-1" style="font-size: 1.25rem;"></i></button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash" style="font-size: 1.25rem;"></i></button>
                         </form>
                     </td>
                 </tr>
@@ -81,11 +81,11 @@
                     <td><small class="text-muted">{{ item.carpeta_rel }}</small></td>
                     <td>{% if item.info %}{{ item.info.no_factura or '?' }}<br><small class="text-muted">{{ item.info.folio_fiscal[:13] }}...</small>{% else %}?{% endif %}</td>
                     <td class="text-end btn-list flex-nowrap justify-content-end">
-                        {% if item.xml %}<a href="/ingresos/rechazados/ver/sin_pdf/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
+                        {% if item.xml %}<a href="/ingresos/rechazados/ver/sin_pdf/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-xml" style="font-size: 1.15rem;"></i></a>{% endif %}
                         <form method="post" action="/ingresos/rechazados/eliminar/sin_pdf" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
                             <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash" style="font-size: 1.15rem;"></i></button>
                         </form>
                     </td>
                 </tr>
@@ -99,7 +99,7 @@
 {% if duplicados %}
 <div class="mb-2">
     <form method="post" action="/ingresos/rechazados/eliminar-todos-duplicados" onsubmit="return confirm('¿Eliminar TODOS los duplicados?')">
-        <button type="submit" class="btn btn-outline-danger btn-sm">🗑️ Eliminar todos ({{ n_duplicados }})</button>
+        <button type="submit" class="btn btn-outline-danger btn-sm"><i class="ti ti-trash me-1" style="font-size: 1.15rem;"></i> Eliminar todos ({{ n_duplicados }})</button>
     </form>
 </div>
 {% endif %}
@@ -115,12 +115,12 @@
                     <td>{% if item.info %}{{ item.info.no_factura or '?' }}{% else %}?{% endif %}</td>
                     <td>{% if item.en_bd %}<span class="badge bg-success text-white">✓ {{ item.en_bd.folio }}</span> <small>{{ item.en_bd.fecha }}</small>{% else %}<small>—</small>{% endif %}</td>
                     <td class="text-end btn-list flex-nowrap justify-content-end">
-                        {% if item.xml %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary">XML</a>{% endif %}
-                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary">PDF</a>{% endif %}
+                        {% if item.xml %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-xml" style="font-size: 1.15rem;"></i></a>{% endif %}
+                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-pdf" style="font-size: 1.15rem;"></i></a>{% endif %}
                         <form method="post" action="/ingresos/rechazados/eliminar/duplicados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
                             <input type="hidden" name="nombre" value="{{ item.nombre_base }}">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">🗑️</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash" style="font-size: 1.15rem;"></i></button>
                         </form>
                     </td>
                 </tr>

@@ -4,11 +4,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from pathlib import Path
-from db import get_conn
+from shared.db import get_conn
 from core.corte_semanal import expr
 from core.corte_semanal import semanas
 from core.corte_semanal.excel_corte import generar_excel, nombre_archivo
-from templates_shared import templates
+from shared.templates_shared import templates
 import json
 
 router = APIRouter(prefix="/corte_semanal", tags=["corte semanal"])

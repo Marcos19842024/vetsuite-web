@@ -3,7 +3,7 @@
 <div class="page-header mb-3">
     <div class="row align-items-center">
         <div class="col">
-            <h2 class="page-title"><i class="ti ti-book me-1" style="font-size: 1.25rem;"></i> Historial del SAT</h2>
+            <h2 class="page-title"> Historial del SAT</h2>
         </div>
         <div class="col-auto ms-auto d-print-none">
             <a href="/egresos" class="btn btn-outline-secondary btn-sm">← Volver a Egresos</a>
@@ -57,7 +57,7 @@
                               style="display:inline" onsubmit="return confirm('¿Reprocesar {{ s.num_xmls }} XMLs?')">
                             <button type="submit" class="btn btn-sm btn-outline-primary"
                                     {% if s.num_xmls == 0 %}disabled{% endif %}>
-                                🔄 Reprocesar
+                                <i class="ti ti-refresh me-1" style="font-size: 1.15rem;"></i> Reprocesar
                             </button>
                         </form>
                     </td>

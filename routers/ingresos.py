@@ -9,9 +9,9 @@ from fastapi.responses import (
     HTMLResponse, RedirectResponse, JSONResponse, FileResponse,
 )
 
-from templates_shared import templates
+from shared.templates_shared import templates
 
-from db import get_conn
+from shared.db import get_conn
 from lector_facturas import (
     cargar_catalogo,
     procesar_factura,
@@ -22,8 +22,8 @@ from lector_facturas import (
     cargar_excepciones_manuales,
     normalizar
 )
-import jobs
-import uploads_manager as um
+from shared import jobs
+from shared import uploads_manager as um
 from correo_facturas import descargar_adjuntos_gmail
 from correo_utils import agrupar_facturas_descargadas
 from excel_web import generar_excel
@@ -986,7 +986,7 @@ def reset_ingresos_completo():
     NO toca: catálogo QVET, categorías manuales, gmail_config.json,
              tablas egresos y recordatorios.
     """
-    from db import borrar_todos_ingresos
+    from shared.db import borrar_todos_ingresos
 
     stats_files = um.reset_ingresos()
     eliminados_bd = borrar_todos_ingresos()

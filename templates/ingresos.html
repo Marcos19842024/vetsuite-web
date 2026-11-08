@@ -32,11 +32,11 @@
             </button>
             <span class="vr mx-2"></span>
             <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('modal-zip').showModal()">
-                <i class="ti ti-package me-1" style="font-size: 1.15rem;"></i> ZIP mensual
+                <i class="ti ti-file-type-zip me-1" style="font-size: 1.15rem;"></i> ZIP mensual
             </button>
             <a href="/ingresos/excel{% if filtros.desde or filtros.hasta or filtros.sucursal %}?desde={{ filtros.desde }}&hasta={{ filtros.hasta }}&sucursal={{ filtros.sucursal }}{% endif %}"
                 class="btn btn-outline-success btn-sm">
-                <i class="ti ti-file-excel me-1" style="font-size: 1.15rem;"></i> Exportar Excel
+                <i class="ti ti-file-type-xls me-1" style="font-size: 1.15rem;"></i> Exportar Excel
             </a>
         </div>
         
@@ -99,7 +99,7 @@
                 </select>
             </div>
             <div class="col-auto ms-auto">
-                <button type="submit" class="btn btn-primary btn-sm">🔍 Filtrar</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm">🔍 Filtrar</button>
                 <a href="/ingresos" class="btn btn-outline-secondary btn-sm">Limpiar</a>
             </div>
         </form>
@@ -202,7 +202,7 @@
             </div>
         </div>
         <div class="modal-footer">
-            <button type="button" id="btn-descargar" class="btn btn-primary btn-sm"> Iniciar descarga</button>
+            <button type="button" id="btn-descargar" class="btn btn-outline-primary btn-sm"> Iniciar descarga</button>
         </div>
     </div>
 </dialog>
@@ -240,7 +240,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="submit" class="btn btn-primary btn-sm"> Guardar</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm"> Guardar</button>
             </div>
         </form>
     </div>
@@ -252,7 +252,7 @@
 <dialog id="modal-zip">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title"><i class="ti ti-package me-1" style="font-size: 1.15rem;"></i> Descargar ZIP mensual</h5>
+            <h5 class="modal-title"><i class="ti ti-file-type-zip me-1" style="font-size: 1.15rem;"></i> Descargar ZIP mensual</h5>
             <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-zip').close()"></button>
         </div>
         <form method="get" action="/ingresos/zip">
@@ -281,7 +281,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="submit" class="btn btn-success btn-sm"> Descargar ZIP</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm"> Descargar ZIP</button>
             </div>
         </form>
     </div>

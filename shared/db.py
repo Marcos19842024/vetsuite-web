@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "vetsuite.db"
+from shared.rutas import DB_FILE as DB_PATH
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)

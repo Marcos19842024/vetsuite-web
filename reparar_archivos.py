@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
-import uploads_manager as um
+from shared import uploads_manager as um
 from lector_facturas import procesar_factura, agrupar_por_categoria
 from routers.ingresos import _construir_datos_json
 

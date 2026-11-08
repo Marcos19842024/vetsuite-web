@@ -22,7 +22,7 @@ from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from openpyxl import Workbook, load_workbook
 
-from templates_shared import templates
+from shared.templates_shared import templates
 
 from core.rutas_recordatorios import (
     AGENDA_CACHE, VACUNAS_CACHE, CARPETA_REPORTES,

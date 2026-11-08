@@ -8,8 +8,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from core import permisos_ip
-
-BASE = Path(__file__).resolve().parent
+from shared.rutas import ROOT as BASE
 
 templates = Jinja2Templates(directory=BASE / "templates")
 

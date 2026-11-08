@@ -129,7 +129,7 @@ def guardar_facturas(facturas, anio=None, agregar_sucursal=True):
 
 def _mes_desde_fecha(fecha):
     """Extrae el mes de una fecha 'dd/mm/yyyy'."""
-    from config.campos import MESES_ES
+    from shared.campos import MESES_ES
     try:
         partes = fecha.split("/")
         if len(partes) == 3:

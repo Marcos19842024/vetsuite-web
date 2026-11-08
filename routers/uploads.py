@@ -2,7 +2,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 
-import uploads_manager as um
+from shared import uploads_manager as um
 import egresos.manager as em
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])

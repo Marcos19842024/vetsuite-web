@@ -3,7 +3,7 @@
 <div class="page-header mb-3">
     <div class="row align-items-center">
         <div class="col">
-            <h2 class="page-title">⚠️ Egresos rechazados</h2>
+            <h2 class="page-title">Egresos rechazados</h2>
         </div>
         <div class="col-auto ms-auto d-print-none">
             <a href="/egresos" class="btn btn-outline-secondary btn-sm">← Volver a Egresos</a>
@@ -43,12 +43,12 @@
                     </td>
                     <td class="text-end btn-list flex-nowrap justify-content-end">
                         <a href="/egresos/rechazados/ver/{{ r.carpeta_rel }}/{{ r.nombre }}"
-                           target="_blank" class="btn btn-sm btn-outline-secondary">Ver XML</a>
+                           target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-xml" style="font-size: 1.15rem;"></i></a>
                         <form method="post" action="/egresos/rechazados/eliminar"
                               style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ r.carpeta_rel }}">
                             <input type="hidden" name="nombre" value="{{ r.nombre }}">
-                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash me-1" style="font-size: 1.25rem;"></i></button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="ti ti-trash me-1" style="font-size: 1.15rem;"></i></button>
                         </form>
                     </td>
                 </tr>

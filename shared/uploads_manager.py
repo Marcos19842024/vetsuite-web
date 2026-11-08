@@ -8,8 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).parent
-UPLOADS = BASE_DIR / "uploads"
+from shared.rutas import ROOT, UPLOADS_DIR
+UPLOADS = UPLOADS_DIR
 TEMPORALES = UPLOADS / "temporales"
 FACTURAS = UPLOADS / "facturas"
 RECHAZADOS = UPLOADS / "rechazados"

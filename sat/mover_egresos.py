@@ -30,7 +30,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from config.campos import MESES_ES
+from shared.campos import MESES_ES
 from core.rutas_egresos import CARPETA_DATOS
 
 

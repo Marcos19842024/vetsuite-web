@@ -10,10 +10,10 @@ from pathlib import Path
 from fastapi import APIRouter, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 
-from templates_shared import templates
+from shared.templates_shared import templates
 
-from db import get_conn
-import jobs
+from shared.db import get_conn
+from shared import jobs
 import egresos.manager as em
 from egresos import sat_wrapper as sat
 from egresos.excel_egresos import generar_excel_pue, generar_excel_ppd

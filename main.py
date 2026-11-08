@@ -3,9 +3,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from db import init_db
+from shared.db import init_db
 from core import permisos_ip
-from templates_shared import templates
+from shared.templates_shared import templates
 from routers import (
     corte_semanal, ingresos, egresos, recordatorios, config_gmail, uploads, rechazados,
     admin_ips, servicios_externos
@@ -23,7 +23,7 @@ async def control_permisos_ip(request: Request, call_next):
     assert request.client is not None
     ip = request.client.host
 
-    if path == "/admin/ips" or path.startswith("/admin/ips/"):
+    if path == "/admin_ips" or path.startswith("/admin_ips/"):
         if not permisos_ip.es_admin(ip):
             return HTMLResponse("No autorizado", status_code=403)
         return await call_next(request)

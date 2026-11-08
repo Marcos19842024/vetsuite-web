@@ -29,7 +29,7 @@ def semana_de_fecha(f: date) -> tuple[int, int]:
 
 def rango_legible(anio: int, semana: int) -> str:
     """'26 oct al 1 nov 2026'"""
-    from config.campos import MESES_ES
+    from shared.campos import MESES_ES
     dias = dias_de(anio, semana)
     l = date.fromisoformat(dias[0])
     d = date.fromisoformat(dias[6])

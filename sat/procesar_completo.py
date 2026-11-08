@@ -15,7 +15,7 @@ NO modifica ningun modulo existente. Solo los usa.
 from pathlib import Path
 import shutil
 
-from config.campos import MESES_ES
+from shared.campos import MESES_ES
 from sat.guardar_egresos import (
     cargar_db_egresos,
     guardar_db_egresos,

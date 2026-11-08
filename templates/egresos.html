@@ -42,7 +42,7 @@
             </button>
             <span class="vr mx-2"></span>
             <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('modal-zip').showModal()">
-                <i class="ti ti-package me-1" style="font-size: 1.15rem;"></i> ZIP mensual
+                <i class="ti ti-file-type-zip me-1" style="font-size: 1.15rem;"></i> ZIP mensual
             </button>
         </div>
 
@@ -111,7 +111,7 @@
                 </select>
             </div>
             <div class="col-auto ms-auto">
-                <button type="submit" class="btn btn-primary btn-sm">🔍 Filtrar</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm">🔍 Filtrar</button>
                 <a href="/egresos" class="btn btn-outline-secondary btn-sm">Limpiar</a>
             </div>
         </form>
@@ -250,7 +250,7 @@
             {% if solicitud_pendiente and not job_activo %}
             <button type="button" class="btn btn-info btn-sm" onclick="retomarSolicitud()"><i class="ti ti-reload me-1" style="font-size: 1.15rem;"></i> Retomar solicitud</button>
             {% endif %}
-            <button type="button" id="btn-iniciar-sat" class="btn btn-primary btn-sm" onclick="iniciarDescargaSAT()"
+            <button type="button" id="btn-iniciar-sat" class="btn btn-outline-primary btn-sm" onclick="iniciarDescargaSAT()"
                     {% if not configurado %}disabled title="Configura e.firma primero"{% endif %}>
                 Iniciar descarga
             </button>
@@ -303,7 +303,7 @@
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="probarFiel()">
                     🔑 Probar FIEL
                 </button>
-                <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm">Guardar</button>
             </div>
         </form>
     </div>
@@ -315,7 +315,7 @@
 <dialog id="modal-zip">
     <div class="modal-content">
         <div class="modal-header">
-            <h5 class="modal-title"><i class="ti ti-package me-1" style="font-size: 1.15rem;"></i> Descargar ZIP mensual</h5>
+            <h5 class="modal-title"><i class="ti ti-file-type-zip me-1" style="font-size: 1.15rem;"></i> Descargar ZIP mensual</h5>
             <button type="button" class="btn-close btn-sm" onclick="document.getElementById('modal-zip').close()"></button>
         </div>
         <form method="get" action="/egresos/zip">
@@ -344,7 +344,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="submit" class="btn btn-success btn-sm"> Descargar ZIP</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm"> Descargar ZIP</button>
             </div>
         </form>
     </div>

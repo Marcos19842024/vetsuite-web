@@ -12,10 +12,10 @@ from pathlib import Path
 from fastapi import APIRouter, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 
-from templates_shared import templates
+from shared.templates_shared import templates
 
-from db import get_conn
-import uploads_manager as um
+from shared.db import get_conn
+from shared import uploads_manager as um
 from lector_facturas import (
     procesar_factura,
     agrupar_por_categoria,

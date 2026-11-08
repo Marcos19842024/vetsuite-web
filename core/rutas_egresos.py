@@ -7,7 +7,7 @@ Rutas de carpetas para el módulo de Egresos.
 import sys
 from datetime import datetime
 from pathlib import Path
-from config.campos import MESES_ES
+from shared.campos import MESES_ES
 
 
 BASE_DIR = Path(__file__).parent.parent / "uploads" / "egresos" / "contabilidad"
