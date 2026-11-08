@@ -14,11 +14,10 @@ from datetime import datetime, timedelta
 IMAP_SERVER = "imap.gmail.com"
 IMAP_PORT = 993
 
-BASE_DIR = Path(__file__).parent
-CARPETA_UPLOADS = BASE_DIR / "uploads" / "ingresos"
-CARPETA_LOGS = BASE_DIR / "uploads" / "logs"
-CARPETA_CACHE = BASE_DIR / "uploads" / "correos_procesados.json"
-
+from shared.rutas import UPLOADS_DIR
+CARPETA_UPLOADS = UPLOADS_DIR / "ingresos"
+CARPETA_LOGS = UPLOADS_DIR / "logs"
+CARPETA_CACHE = UPLOADS_DIR / "correos_procesados.json"
 
 def _ruta_log():
     CARPETA_LOGS.mkdir(parents=True, exist_ok=True)

@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from shared import uploads_manager as um
-from lector_facturas import procesar_factura, agrupar_por_categoria
+from ingresos.lector_facturas import procesar_factura, agrupar_por_categoria
 from routers.ingresos import _construir_datos_json
 from shared.rutas import DB_FILE as DB_PATH
 

@@ -16,7 +16,7 @@ from shared.templates_shared import templates
 
 from shared.db import get_conn
 from shared import uploads_manager as um
-from lector_facturas import (
+from ingresos.lector_facturas import (
     procesar_factura,
     agrupar_por_categoria,
     leer_xml_factura,

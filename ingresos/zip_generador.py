@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import shared.uploads_manager as um
-from excel_web import generar_excel
+from ingresos.excel_web import generar_excel
 
 
 def _fecha_ddmmyyyy(fecha_str):

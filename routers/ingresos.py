@@ -12,7 +12,7 @@ from fastapi.responses import (
 from shared.templates_shared import templates
 
 from shared.db import get_conn
-from lector_facturas import (
+from ingresos.lector_facturas import (
     cargar_catalogo,
     procesar_factura,
     agrupar_por_categoria,
@@ -20,15 +20,16 @@ from lector_facturas import (
     borrar_producto_catalogo,
     recargar_catalogo,
     cargar_excepciones_manuales,
-    normalizar
+    normalizar,
+    leer_xml_factura
 )
 from shared import jobs
 from shared import uploads_manager as um
 from shared.rutas import GMAIL_CONFIG
-from correo_facturas import descargar_adjuntos_gmail
-from correo_utils import agrupar_facturas_descargadas
-from excel_web import generar_excel
-from zip_generador import generar_zip_mensual
+from ingresos.correo_facturas import descargar_adjuntos_gmail
+from ingresos.correo_utils import agrupar_facturas_descargadas
+from ingresos.excel_web import generar_excel
+from ingresos.zip_generador import generar_zip_mensual
 
 router = APIRouter(prefix="/ingresos", tags=["ingresos"])
 
@@ -493,7 +494,6 @@ def _procesar_descarga(job_id, modo, valor_n, desde, hasta):
 
             # Leer fecha y serie del XML para determinar destino
             try:
-                from lector_facturas import leer_xml_factura
                 datos_cab = leer_xml_factura(str(xml_path))
             except Exception:
                 datos_cab = {}
@@ -1108,7 +1108,6 @@ def reclasificar_sucursales():
                 errores.append(f"ID {p['id']}: sin XML")
                 continue
 
-            from lector_facturas import leer_xml_factura
             datos = leer_xml_factura(str(xml_path))
             serie = datos.get("serie", "")
             sucursal = um.serie_a_sucursal(serie)
