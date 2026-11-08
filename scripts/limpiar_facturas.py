@@ -2,9 +2,11 @@
 Limpieza: borra de uploads/facturas/ cualquier archivo que no sea
 <folio>.xml o <folio>.pdf. Los mueve a uploads/duplicados/ para no perderlos.
 """
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import re
 import shutil
-from pathlib import Path
 from shared import uploads_manager as um
 
 PATRON = re.compile(r'^\d+\.(xml|pdf|XML|PDF)$', re.IGNORECASE)
