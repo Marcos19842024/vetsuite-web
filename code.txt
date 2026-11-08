@@ -6,3 +6,17 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 npx qrdev uvicorn main:app --host 0.0.0.0 --port 8000
+
+Si incluso después de activarlo sigue sin funcionar
+Entonces es que la carpeta Scripts del entorno virtual no está en PATH. Verifica manualmente si uvicorn.exe existe:
+
+dir .\venv\Scripts\uvicorn*
+
+cd C:\vetsuite_web
+dir venv\Scripts\uvicorn*
+
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+Si aparece, pero uvicorn no se reconoce, usa siempre:
+.\venv\Scripts\uvicorn.exe main:app --reload
