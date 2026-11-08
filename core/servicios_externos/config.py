@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-RUTA = Path("servicios_externos_config.json")
+from shared.rutas import SERVICIOS_EXTERNOS_CONFIG as RUTA
 
 DEFAULTS = {
     "conceptos": ["Incineración", "Hemograma"],

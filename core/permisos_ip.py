@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-RUTA = Path(__file__).resolve().parent.parent / "ip_permisos.json"
+from shared.rutas import IP_PERMISOS as RUTA
 
 _DEFAULT = {
     "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios"],

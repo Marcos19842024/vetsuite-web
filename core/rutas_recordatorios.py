@@ -23,7 +23,7 @@ AGENDA_CACHE   = CARPETA_DATOS / "agenda_importada.json"
 VACUNAS_CACHE  = CARPETA_DATOS / "vacunas_importada.json"
 
 # Configuración del módulo (sucursal activa, nombre clínica, plantillas)
-CONFIG_FILE = BASE_DIR / "recordatorios_config.json"
+from shared.rutas import RECORDATORIOS_CONFIG as CONFIG_FILE
 
 
 def cargar_json(path, default):

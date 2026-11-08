@@ -24,6 +24,7 @@ from lector_facturas import (
 )
 from shared import jobs
 from shared import uploads_manager as um
+from shared.rutas import GMAIL_CONFIG
 from correo_facturas import descargar_adjuntos_gmail
 from correo_utils import agrupar_facturas_descargadas
 from excel_web import generar_excel
@@ -31,8 +32,7 @@ from zip_generador import generar_zip_mensual
 
 router = APIRouter(prefix="/ingresos", tags=["ingresos"])
 
-BASE_DIR = Path(__file__).parent.parent
-GMAIL_CONFIG = BASE_DIR / "gmail_config.json"
+from shared.rutas import GMAIL_CONFIG
 
 CATEGORIAS = ["U", "ACCESORIOS", "MEDICAMENTOS", "HIGIENE",
               "ESTETICA", "TRANSPORTE", "PENSION", "VACUNA", "CLINICA"]

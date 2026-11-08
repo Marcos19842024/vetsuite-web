@@ -7,23 +7,13 @@ import re
 import json
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from pathlib import Path
 from collections import defaultdict
 
-
-BASE_DIR = Path(__file__).parent
-
-
-def _carpeta_datos():
-    return BASE_DIR
-
-
-def _ruta_recurso(nombre_archivo):
-    return BASE_DIR / nombre_archivo
+from shared.rutas import CATALOGO_QVET, CATEGORIAS_MANUALES
 
 
 def ruta_catalogo_usuario():
-    return _carpeta_datos() / "catalogo_qvet.json"
+    return CATALOGO_QVET
 
 
 def recargar_catalogo():
@@ -77,7 +67,7 @@ def cargar_excepciones_manuales():
     if _EXCEPCIONES_MANUALES is not None:
         return _EXCEPCIONES_MANUALES
 
-    ruta = _carpeta_datos() / "categorias_manuales.json"
+    ruta = CATEGORIAS_MANUALES
     if ruta.exists():
         try:
             with open(ruta, "r", encoding="utf-8") as f:
@@ -96,7 +86,7 @@ def guardar_excepciones_manuales(exc):
     global _EXCEPCIONES_MANUALES
     _EXCEPCIONES_MANUALES = dict(exc)
 
-    ruta = _carpeta_datos() / "categorias_manuales.json"
+    ruta = CATEGORIAS_MANUALES
     with open(ruta, "w", encoding="utf-8") as f:
         json.dump(exc, f, ensure_ascii=False, indent=2, sort_keys=True)
 

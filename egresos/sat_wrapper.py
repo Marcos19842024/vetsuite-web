@@ -7,10 +7,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.parent
-CONFIG_FILE = BASE_DIR / "egresos_config.json"
-PROVEEDORES_FILE = BASE_DIR / "proveedores_sucursal.json"
-SOLICITUD_FILE = BASE_DIR / "solicitud_sat_activa.json"
+from shared.rutas import (
+    EGRESOS_CONFIG as CONFIG_FILE,
+    PROVEEDORES_SUCURSAL as PROVEEDORES_FILE,
+    SOLICITUD_SAT_ACTIVA as SOLICITUD_FILE,
+)
 
 DEFAULT_CONFIG = {
     "rfc_receptor": "",

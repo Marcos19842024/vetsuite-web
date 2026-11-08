@@ -1,12 +1,11 @@
 import json
-from pathlib import Path
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from shared.templates_shared import templates
+from shared.rutas import GMAIL_CONFIG
 
 router = APIRouter(prefix="/config_gmail", tags=["config gmail"])
-GMAIL_CONFIG = Path(__file__).parent.parent / "gmail_config.json"
 
 
 def _leer():
