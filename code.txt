@@ -20,3 +20,5 @@ pip install -r requirements.txt
 
 Si aparece, pero uvicorn no se reconoce, usa siempre:
 .\venv\Scripts\uvicorn.exe main:app --reload
+
+Nota: arreglar lo de gmail y lo de servicios externos
