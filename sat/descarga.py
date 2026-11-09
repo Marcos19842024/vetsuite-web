@@ -345,7 +345,7 @@ def flujo_completo(ruta_cer, ruta_key, password, rfc,
 # PRUEBA DIRECTA
 # ============================================================
 if __name__ == "__main__":
-    from config.config_egresos import cargar_config_egresos
+    from egresos.config_egresos import cargar_config_egresos
 
     cfg = cargar_config_egresos()
     print("Config SAT:")

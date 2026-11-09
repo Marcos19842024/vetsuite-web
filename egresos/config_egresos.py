@@ -8,15 +8,13 @@ import json
 from pathlib import Path
 
 # Importamos la carpeta de datos desde rutas_egresos (única fuente de verdad)
-from core.rutas_egresos import CARPETA_DATOS as _CARPETA_DATOS
-
-
-# Archivos de configuración de egresos
-CONFIG_EGRESOS_FILE         = _CARPETA_DATOS / "config_egresos.json"
-PROVEEDORES_TC_FILE         = _CARPETA_DATOS / "proveedores_tc.json"
-PROVEEDORES_SUCURSAL_FILE   = _CARPETA_DATOS / "proveedores_sucursal.json"
-OBSERVACIONES_FILE          = _CARPETA_DATOS / "observaciones_egresos.json"
-SOLICITUD_ACTIVA_FILE       = _CARPETA_DATOS / "solicitud_sat_activa.json"
+from shared.rutas import (
+    CONFIG_EGRESOS as CONFIG_EGRESOS_FILE,
+    PROVEEDORES_TC as PROVEEDORES_TC_FILE,
+    PROVEEDORES_SUCURSAL as PROVEEDORES_SUCURSAL_FILE,
+    OBSERVACIONES_EGRESOS as OBSERVACIONES_FILE,
+    SOLICITUD_SAT_ACTIVA as SOLICITUD_ACTIVA_FILE,
+)
 
 
 # ============================================================

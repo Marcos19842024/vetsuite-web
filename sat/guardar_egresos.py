@@ -56,7 +56,7 @@ def _sucursal_para_rfc(rfc):
     if not rfc:
         return None
     try:
-        from config.config_egresos import cargar_proveedores_sucursal
+        from egresos.config_egresos import cargar_proveedores_sucursal
         proveedores = cargar_proveedores_sucursal()
         rfc = str(rfc).strip().upper()
         # Buscar sin importar mayúsculas
