@@ -22,3 +22,5 @@ Si aparece, pero uvicorn no se reconoce, usa siempre:
 .\venv\Scripts\uvicorn.exe main:app --reload
 
 Nota: arreglar lo de gmail y lo de servicios externos
+
+C:\vetsuite_web\venv\Scripts\python.exe -m npx qrdev uvicorn main:app --host 0.0.0.0 --port 8000
