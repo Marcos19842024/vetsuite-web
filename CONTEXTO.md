@@ -63,32 +63,31 @@ CONTEXTO_SESION.md.
 Archivos en la raíz:
 
 - main.py — FastAPI app + routers
+- requirements.txt
+- README.md
+- CONTEXTO.md
+- CONTEXTO_SESION.md
+- .gitignore
+- vetsuite.db — base de datos SQLite (NO va a git)
+
+Paquete shared/ — módulos transversales a todos los módulos:
+
+- __init__.py
+- rutas.py — fuente única de verdad para rutas de archivos (ROOT, JSON_DIR, UPLOADS_DIR, DB_FILE + constantes de cada JSON)
 - db.py — SQLite + init_db() + migraciones
 - jobs.py — gestor de jobs con persistencia
-- jobs_state.json — estado persistente de los jobs (NO va a git)
-- uploads_manager.py — rutas de Ingresos
+- templates_shared.py — Jinja2Templates compartido
+- uploads_manager.py — rutas de uploads de Ingresos (rechazados, sin_pdf, etc.)
+- campos.py — MESES_ES y otras constantes
+
+Paquete ingresos/ — todo el pipeline de Ingresos:
+
+- __init__.py
 - correo_facturas.py — descarga IMAP de Gmail
 - correo_utils.py — agrupar XML+PDF por correo
-- lector_facturas.py — parser XML+PDF de Ingresos
+- lector_facturas.py — parser XML+PDF de Ingresos (productos del PDF, cabecera del XML)
 - excel_web.py — generador de Excel de Ingresos
 - zip_generador.py — ZIP mensual de Ingresos
-- reparar_archivos.py — reparación de archivos huérfanos
-- limpiar_facturas.py — limpieza de uploads/facturas/
-- probar_parser.py — script de prueba del parser de Recordatorios
-- regenerar_plantilla.py — regenera la plantilla del Corte desde cero
-- requirements.txt
-
-Configuración (NO va a git):
-
-- gmail_config.json
-- egresos_config.json
-- recordatorios_config.json
-- catalogo_qvet.json
-- categorias_manuales.json
-- proveedores_sucursal.json
-- solicitud_sat_activa.json
-- servicios_externos_config.json
-- vetsuite.db
 
 Paquete egresos/:
 
@@ -96,24 +95,25 @@ Paquete egresos/:
 - manager.py — rutas y movimiento de XMLs
 - sat_wrapper.py — wrapper de sat/ + config + proveedores
 - excel_egresos.py — generador de Excel PUE + PPD
+- config_egresos.py — configuración del módulo (lee/escribe desde json/)
 
 Paquete core/:
 
-- rutas_egresos.py
-- sat_historial.py
-- rutas_recordatorios.py
 - permisos_ip.py — módulos válidos, modulo_de_path(), es_admin_ip()
+- rutas_egresos.py — rutas de carpetas de Egresos
+- rutas_recordatorios.py — rutas de uploads/recordatorios/ y config
+- sat_historial.py — snapshots del SAT
+- corte_semanal/
+  - __init__.py
+  - expr.py — parser seguro de expresiones tipo 2345+679
+  - semanas.py — helpers ISO week (lunes a domingo)
+  - excel_corte.py — generador del Excel del Corte usando plantilla
 - recordatorios/
   - __init__.py
   - sucursales.py
   - historial.py
   - envio.py
   - procesar_excel.py
-- corte_semanal/
-  - __init__.py
-  - expr.py — parser seguro de expresiones tipo 2345+679
-  - semanas.py — helpers ISO week (lunes a domingo)
-  - excel_corte.py — generador del Excel del Corte usando plantilla
 - servicios_externos/
   - __init__.py
   - config.py — cargar/guardar listas (conceptos, tipos de pago)
@@ -131,6 +131,11 @@ Paquete routers/:
 - corte_semanal.py — Corte Semanal (captura + Excel + cierre + /arbol + obs por celda)
 - servicios_externos.py — Servicios Externos (captura + cierre + /arbol)
 - admin_ips.py — administración de IPs y permisos (prefix /admin)
+
+Paquete sat/ (código del SAT de la app de escritorio, adaptado):
+
+- conversion.py, descarga.py, procesar_xml.py, procesar_completo.py,
+  guardar_egresos.py, mover_egresos.py
 
 Paquete templates/:
 
@@ -154,17 +159,29 @@ Paquete static/:
 
 - style.css
 
-Paquete sat/:
+Paquete scripts/ — utilidades de mantenimiento:
 
-- conversion.py, descarga.py, procesar_xml.py, procesar_completo.py,
-  guardar_egresos.py, mover_egresos.py
+- __init__.py
+- reparar_archivos.py — reparación de archivos huérfanos de Ingresos
+- limpiar_facturas.py — limpieza de uploads/facturas/
 
-Paquete config/:
+Carpeta json/ — configuración y estado (NO va a git):
 
-- campos.py — MESES_ES
-- config_egresos.py
+- catalogo_qvet.json
+- categorias_manuales.json
+- config_egresos.json (si existe)
+- egresos_config.json
+- gmail_config.json
+- ip_permisos.json
+- jobs_state.json
+- observaciones_egresos.json (si existe)
+- proveedores_sucursal.json
+- proveedores_tc.json (si existe)
+- recordatorios_config.json
+- servicios_externos_config.json
+- solicitud_sat_activa.json (si existe)
 
-Carpeta uploads/:
+Carpeta uploads/ (NO va a git):
 
 - ingresos/<año>/<mes>/<sucursal>/<folio>.xml|.pdf
 - egresos/efirma/ — .cer y .key
@@ -749,11 +766,13 @@ En `static/style.css`:
   recordatorios_config.json, catalogo_qvet.json, categorias_manuales.json,
   proveedores_sucursal.json, solicitud_sat_activa.json, jobs_state.json,
   servicios_externos_config.json.
-- Si se corrompen los archivos de Ingresos: python reparar_archivos.py
-- Si hay basura en uploads/facturas/: python limpiar_facturas.py
+- Si se corrompen los archivos de Ingresos: python scripts/reparar_archivos.py
+- Si hay basura en uploads/facturas/: python scripts/limpiar_facturas.py
 - Si uvicorn no recarga un cambio de CSS/JS, forzar recarga en el navegador
   con Ctrl+Shift+R (Cmd+Shift+R en Mac). Un `304 Not Modified` en la
   consola es normal (el archivo no cambió para el navegador).
+- Los JSON de configuración viven en `json/`, no en la raíz.
+- La carpeta `scripts/` tiene los utilitarios (`reparar_archivos.py`, `limpiar_facturas.py`). Se corren desde la raíz: `python scripts/reparar_archivos.py`.
 
 ---
 
@@ -844,6 +863,19 @@ En `static/style.css`:
     `.tabla-scroll` original.
 56. v0.9: si uvicorn no recarga CSS/JS, forzar recarga en el navegador.
     Un `304 Not Modified` es normal.
+57. v0.9.x: las rutas de archivos se centralizan en `shared/rutas.py`.
+    Todo el código importa de ahí en vez de hardcodear
+    `Path(__file__).parent / "..."`.
+58. v0.9.x: `shared/rutas.py` expone `ROOT`, `JSON_DIR`, `UPLOADS_DIR`,
+    `DB_FILE` y una constante por cada JSON de configuración.
+59. v0.9.x: los JSON de configuración viven en `json/`. La app los
+    lee y escribe ahí.
+60. v0.9.x: los módulos transversales (db, jobs, templates_shared,
+    uploads_manager, campos) viven en `shared/`.
+61. v0.9.x: el pipeline de Ingresos (correo_facturas, correo_utils,
+    lector_facturas, excel_web, zip_generador) vive en `ingresos/`.
+62. v0.9.x: los scripts de mantenimiento (reparar_archivos,
+    limpiar_facturas) viven en `scripts/`.
 
 ---
 
@@ -853,19 +885,7 @@ NO van a git:
 
 - vetsuite.db
 - uploads/ (todo)
-- gmail_config.json
-- egresos_config.json
-- recordatorios_config.json
-- catalogo_qvet.json
-- categorias_manuales.json
-- proveedores_sucursal.json
-- solicitud_sat_activa.json
-- jobs_state.json
-- servicios_externos_config.json
-- migrar_servicios_externos.py
-- migrar_tipos_pago.py
-- migrar_recuperacion.py
-- Inicineraciones.xlsx (si está en la raíz)
+- json/ (toda la carpeta; la config es local)
 
 ---
 
