@@ -1,3 +1,98 @@
+# Sesión de trabajo — 2026-11-08 (VetSuite Web v0.9.x — refactor de estructura)
+
+## Resumen
+
+Sesión de **reorganización de carpetas**. Se movieron los archivos sueltos
+de la raíz a sus paquetes correspondientes, se centralizaron las rutas de
+archivos en `shared/rutas.py`, y se aislaron los JSON de configuración en
+`json/`. Sin cambios de funcionalidad.
+
+Se completó:
+- `shared/` con módulos transversales (db, jobs, templates_shared, uploads_manager, campos, rutas).
+- `ingresos/` con todo el pipeline de Ingresos.
+- `json/` con los 9 JSON de configuración.
+- `scripts/` con los utilitarios de mantenimiento.
+- `egresos/config_egresos.py` (antes en `config/`).
+- Eliminación de la carpeta `config/`.
+- `shared/rutas.py` como fuente única de verdad de rutas.
+
+## Estructura final
+
+(ver CONTEXTO.md §3)
+
+## Archivos movidos
+
+| Antes | Después |
+|---|---|
+| `db.py` | `shared/db.py` |
+| `jobs.py` | `shared/jobs.py` |
+| `templates_shared.py` | `shared/templates_shared.py` |
+| `uploads_manager.py` | `shared/uploads_manager.py` |
+| `config/campos.py` | `shared/campos.py` |
+| `correo_facturas.py` | `ingresos/correo_facturas.py` |
+| `correo_utils.py` | `ingresos/correo_utils.py` |
+| `lector_facturas.py` | `ingresos/lector_facturas.py` |
+| `excel_web.py` | `ingresos/excel_web.py` |
+| `zip_generador.py` | `ingresos/zip_generador.py` |
+| `config/config_egresos.py` | `egresos/config_egresos.py` |
+| `reparar_archivos.py` | `scripts/reparar_archivos.py` |
+| `limpiar_facturas.py` | `scripts/limpiar_facturas.py` |
+| 9 JSON en raíz | `json/*.json` |
+
+## Bugs resueltos
+
+- **`ModuleNotFoundError: No module named 'excel_web'`** al mover
+  `zip_generador.py` a `ingresos/`: el import `from excel_web import ...`
+  no fue capturado por el `sed` inicial. Fix: `from ingresos.excel_web import ...`.
+- **`scripts/reparar_archivos.py` importaba `from lector_facturas import ...`**:
+  roto tras mover `lector_facturas.py` a `ingresos/`. Fix:
+  `from ingresos.lector_facturas import ...`.
+- **`DB_PATH` en `scripts/reparar_archivos.py`** apuntaba a `scripts/vetsuite.db`
+  tras el `git mv`. Fix: `from shared.rutas import DB_FILE as DB_PATH`.
+- **`sys.path.insert` después del import de `shared`** en
+  `scripts/limpiar_facturas.py`. Fix: moverlo antes de cualquier import
+  del proyecto.
+- **`config/` no se podía borrar** por `config/__pycache__/`. Fix:
+  `rm -rf config/`.
+- **`sat_wrapper.BASE_DIR`** apuntaba a `BASE_DIR / "egresos_config.json"`
+  y otros; al centralizar, todos los JSON de Egresos ahora viven en `json/`.
+
+## Estado actual
+
+### Funcional
+- ✅ Todos los módulos importan sin error (`import main` + test de imports completo).
+- ✅ Todas las constantes de `shared.rutas` resuelven a archivos existentes.
+- ✅ Sin JSON sueltos en la raíz.
+- ✅ Sin `config/`.
+- ✅ 6 commits pusheados a `origin/main`.
+
+### Pendiente (post-refactor)
+- 📝 Verificar en runtime cada módulo (uvicorn + navegador).
+- 🧹 Revisar `code.txt` en la raíz y decidir si borrar.
+- 🧹 Confirmar `.DS_Store` en `.gitignore`.
+- 📝 Actualizar `README.md` si menciona `python reparar_archivos.py` (ahora `python scripts/reparar_archivos.py`).
+
+### Pendiente (deuda técnica del refactor)
+- 🔧 Blindar los 14 `Path(__file__)` restantes con `shared.rutas`.
+- 🔧 Consolidar `egresos/config_egresos.py` y `egresos/sat_wrapper.py`
+  (duplican lógica de configuración leyendo archivos distintos).
+
+### Pendiente (global, arrastrado)
+- 🧪 Tests automáticos (Recordatorios, Ingresos, Egresos, Corte, Servicios Externos).
+- 🪟 Documentación de instalación en Windows 11.
+- ⏰ Arranque automático con el sistema.
+
+## Reglas nuevas (estructura / refactor)
+
+68. Las rutas de archivos se centralizan en `shared/rutas.py`.
+69. Los JSON de configuración viven en `json/`.
+70. Los módulos transversales (db, jobs, templates_shared, uploads_manager, campos) viven en `shared/`.
+71. El pipeline de Ingresos vive en `ingresos/`.
+72. Los scripts de mantenimiento viven en `scripts/`.
+73. `egresos/config_egresos.py` vive en `egresos/`.
+74. `config/` ya no existe.
+75. Cuando muevas un archivo de carpeta, revisa `Path(__file__)` y los imports que lo referencian.
+
 # Sesión de trabajo — 2026-11-07 (VetSuite Web v0.9)
 
 ## Resumen
