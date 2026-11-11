@@ -876,6 +876,7 @@ En `static/style.css`:
     lector_facturas, excel_web, zip_generador) vive en `ingresos/`.
 62. v0.9.x: los scripts de mantenimiento (reparar_archivos,
     limpiar_facturas) viven en `scripts/`.
+63.  v0.9.x: la navegación con Enter/Shift+Enter en celdas numéricas del Corte Semanal es tipo Excel: dentro de la misma columna (día) baja/sube fila por fila, y al llegar al final de la columna salta a la primera (o última, en Shift+Enter) fila editable de la columna siguiente/anterior del mismo bloque. Al terminar la última columna (domingo) pasa al bloque siguiente (Ingresos → Egresos → Por cobrar → Observaciones → ciclo a Ingresos), reset a Lunes fila 1 (o Domingo última fila si es Shift+Enter). Observaciones usa Enter = salto de línea; la navegación entre textareas es con Tab/flechas. No cruza entre sucursales.
 
 ---
 

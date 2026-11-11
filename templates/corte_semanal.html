@@ -560,7 +560,7 @@ window.CORTE = {
     td.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        navegarVertical(td, e.shiftKey ? -1 : +1);
+        navegarEnter(td, e.shiftKey ? -1 : +1);
       }
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -576,40 +576,147 @@ window.CORTE = {
     // td.addEventListener('keydown', (e) => { if (e.key === 'F2') abrirModal(td); });
   });
 
-  // Navegación vertical: baja/sube a la celda del mismo campo, día siguiente/anterior
-  function navegarVertical(td, dir) {
+  // Devuelve la primera celda editable de una tabla en una columna concreta.
+  function editableEnColumna(tabla, colIndex) {
+    if (!tabla) return null;
+    for (const f of tabla.querySelectorAll('tr')) {
+      const c = f.children[colIndex];
+      if (c && c.classList.contains('corte-celda-td')) return c;
+    }
+    return null;
+  }
+
+  // Devuelve la ÚLTIMA celda editable de una tabla en una columna concreta.
+  function ultimaEditableEnColumna(tabla, colIndex) {
+    if (!tabla) return null;
+    const filas = Array.from(tabla.querySelectorAll('tr')).reverse();
+    for (const f of filas) {
+      const c = f.children[colIndex];
+      if (c && c.classList.contains('corte-celda-td')) return c;
+    }
+    return null;
+  }
+
+  // Devuelve la primera celda editable de una tabla (cualquier columna).
+  function primerEditableDeTabla(tabla) {
+    if (!tabla) return null;
+    for (const f of tabla.querySelectorAll('tr')) {
+      const c = f.querySelector('td.corte-celda-td');
+      if (c) return c;
+    }
+    return null;
+  }
+
+  // Devuelve la última celda editable de una tabla (cualquier columna).
+  function ultimaEditableDeTabla(tabla) {
+    if (!tabla) return null;
+    const filas = Array.from(tabla.querySelectorAll('tr')).reverse();
+    for (const f of filas) {
+      const celdas = f.querySelectorAll('td.corte-celda-td');
+      if (celdas.length) return celdas[celdas.length - 1];
+    }
+    return null;
+  }
+
+  // Navegación tipo Excel dentro del bloque, con cambio de bloque al final.
+  //   dir > 0  → Enter     (baja dentro de la columna, luego salta a la siguiente columna)
+  //   dir < 0  → Shift+Enter (sube dentro de la columna, luego salta a la anterior)
+  // Al terminar la última columna (domingo) pasa al siguiente bloque (ciclo).
+  function navegarEnter(td, dir) {
     const fila = td.closest('tr');
     const tabla = td.closest('table');
-    const celdasFila = Array.from(fila.querySelectorAll('td.corte-celda-td'));
-    const idx = celdasFila.indexOf(td);
+    const bloque = td.closest('.bloque');
+    if (!fila || !tabla || !bloque) { td.blur(); return; }
 
+    const colIndex = td.cellIndex;                 // 1..7 = día (0 = Concepto)
+    const DIA_MIN = 1, DIA_MAX = 7;
+
+    // 1) Dentro de la misma columna (misma tabla)
     if (dir > 0) {
-      // Bajar: primera celda de la siguiente fila editable
-      let filaSig = fila.nextElementSibling;
-      while (filaSig) {
-        const celda = filaSig.querySelector('td.corte-celda-td');
-        if (celda) { celda.focus(); return; }
-        filaSig = filaSig.nextElementSibling;
-      }
-      // Si no hay siguiente fila editable en esta tabla, buscar en la siguiente tabla
-      let tablaSig = tabla.parentElement.nextElementSibling;
-      while (tablaSig) {
-        const t = tablaSig.querySelector('table');
-        if (t) {
-          const primera = t.querySelector('td.corte-celda-td');
-          if (primera) { primera.focus(); return; }
-        }
-        tablaSig = tablaSig.nextElementSibling;
+      let f = fila.nextElementSibling;
+      while (f) {
+        const c = f.children[colIndex];
+        if (c && c.classList.contains('corte-celda-td')) { c.focus(); return; }
+        f = f.nextElementSibling;
       }
     } else {
-      // Subir: última celda de la fila anterior editable, o salir
-      let filaAnt = fila.previousElementSibling;
-      while (filaAnt) {
-        const celdas = filaAnt.querySelectorAll('td.corte-celda-td');
-        if (celdas.length) { celdas[celdas.length - 1].focus(); return; }
-        filaAnt = filaAnt.previousElementSibling;
+      let f = fila.previousElementSibling;
+      while (f) {
+        const c = f.children[colIndex];
+        if (c && c.classList.contains('corte-celda-td')) { c.focus(); return; }
+        f = f.previousElementSibling;
       }
     }
+
+    // 2) Cambio de columna dentro del MISMO bloque
+    const colSiguiente = dir > 0 ? colIndex + 1 : colIndex - 1;
+    if (colSiguiente >= DIA_MIN && colSiguiente <= DIA_MAX) {
+      const c = dir > 0
+        ? editableEnColumna(tabla, colSiguiente)
+        : ultimaEditableEnColumna(tabla, colSiguiente);
+      if (c) { c.focus(); return; }
+    }
+
+    // 3) Cambio de bloque dentro de la MISMA sucursal (con ciclo)
+    const sucursal = td.dataset.sucursal;
+    const contenedorSuc = document.querySelector(
+      `.tabla-sucursal[data-sucursal="${sucursal}"]`
+    );
+    if (!contenedorSuc) { td.blur(); return; }
+
+    const bloques = Array.from(contenedorSuc.querySelectorAll('.bloque'));
+    const idxActual = bloques.indexOf(bloque);
+    if (idxActual === -1) { td.blur(); return; }
+
+    // Helper: activa la sub-tab del bloque destino (quita d-none, marca nav-link)
+    const activarSubtab = (bloqueDestino) => {
+      const nombre = bloqueDestino.dataset.bloque;
+      // Ocultar todos los bloques y desmarcar todos los nav-link
+      contenedorSuc.querySelectorAll('.bloque').forEach(b => b.classList.add('d-none'));
+      contenedorSuc.querySelectorAll(`#subtabs-${sucursal} .nav-link`)
+        .forEach(t => t.classList.remove('active'));
+      // Mostrar el destino y marcar su tab
+      bloqueDestino.classList.remove('d-none');
+      const tab = contenedorSuc.querySelector(
+        `#subtabs-${sucursal} .nav-link[data-bloque="${nombre}"]`
+      );
+      if (tab) tab.classList.add('active');
+    };
+
+    const entrarABloque = (destino) => {
+      if (!destino) return false;
+      const t = destino.querySelector('table');
+      if (!t) return false;
+
+      // Primero activar la sub-tab (si no, focus() no funciona en bloque oculto)
+      activarSubtab(destino);
+
+      // Observaciones: textareas, sin columna.
+      if (destino.dataset.bloque === 'observaciones') {
+        const textos = destino.querySelectorAll('textarea.corte-obs');
+        if (!textos.length) return false;
+        (dir > 0 ? textos[0] : textos[textos.length - 1]).focus();
+        return true;
+      }
+
+      // Bloque normal: al bajar → Lunes fila 1; al subir → Domingo última fila.
+      const c = dir > 0
+        ? editableEnColumna(t, DIA_MIN)
+        : ultimaEditableEnColumna(t, DIA_MAX);
+      if (c) { c.focus(); return true; }
+      return false;
+    };
+
+    if (dir > 0) {
+      for (let i = 1; i <= bloques.length; i++) {
+        if (entrarABloque(bloques[(idxActual + i) % bloques.length])) return;
+      }
+    } else {
+      for (let i = 1; i <= bloques.length; i++) {
+        if (entrarABloque(bloques[(idxActual - i + bloques.length) % bloques.length])) return;
+      }
+    }
+
     td.blur();
   }
 
@@ -726,7 +833,7 @@ window.CORTE = {
     if (subcampo) payload.subcampo = subcampo;
     if (obs !== undefined) payload.obs = obs;   // ===== NUEVO =====
 
-    guardarRaw(payload).then(() => navegarVertical(td, +1));
+    guardarRaw(payload).then(() => navegarEnter(td, +1));
     cerrarModal();
   }
 
