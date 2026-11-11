@@ -54,7 +54,7 @@
                     </td>
                     <td class="text-end btn-list flex-nowrap justify-content-end">
                         {% if item.xml %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-xml" style="font-size: 1.15rem;"></i></a>{% endif %}
-                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-pdf" style="font-size: 1.15rem;"></i></a>{% endif %}
+                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/rechazados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-file-type-pdf" style="font-size: 1.15rem;"></i></a>{% endif %}
                         <a href="/ingresos/rechazados/rescatar/{{ item.carpeta_rel }}/{{ item.nombre_base }}" class="btn btn-sm btn-outline-success">Rescatar</a>
                         <form method="post" action="/ingresos/rechazados/eliminar/rechazados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
@@ -116,7 +116,7 @@
                     <td>{% if item.en_bd %}<span class="badge bg-success text-white">✓ {{ item.en_bd.folio }}</span> <small>{{ item.en_bd.fecha }}</small>{% else %}<small>—</small>{% endif %}</td>
                     <td class="text-end btn-list flex-nowrap justify-content-end">
                         {% if item.xml %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/xml" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-xml" style="font-size: 1.15rem;"></i></a>{% endif %}
-                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-file-type-pdf" style="font-size: 1.15rem;"></i></a>{% endif %}
+                        {% if item.pdf %}<a href="/ingresos/rechazados/ver/duplicados/{{ item.carpeta_rel }}/{{ item.nombre_base }}/pdf" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-file-type-pdf" style="font-size: 1.15rem;"></i></a>{% endif %}
                         <form method="post" action="/ingresos/rechazados/eliminar/duplicados" style="display:inline" onsubmit="return confirm('¿Eliminar?')">
                             <input type="hidden" name="carpeta_rel" value="{{ item.carpeta_rel }}">
                             <input type="hidden" name="nombre" value="{{ item.nombre_base }}">

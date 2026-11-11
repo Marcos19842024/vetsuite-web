@@ -621,16 +621,30 @@ En `init_db()`:
 
 ### Filtro de fechas de Gmail
 
-- **No se usa** `SINCE`/`BEFORE` de IMAP. Gmail los ignora o los aplica
-  sobre `INTERNALDATE` (fecha de entrega), no sobre el header `Date:`.
-- El `search` de IMAP solo lleva `UNSEEN` (si aplica), `FROM` (si aplica)
-  y `ALL`.
-- El filtro de fechas se hace **en Python**, leyendo `msg.get("Date")` con
-  `email.utils.parsedate_to_datetime`.
-- Se aplica **antes** del chequeo de caché y del filtro de remitente, para
-  descartar correos fuera de rango temprano.
+- **Pre-filtro en servidor con `X-GM-RAW`** (v0.9.x): el `search` de
+  IMAP incluye `X-GM-RAW` con `after:`/`before:` para que Gmail
+  filtre por fecha en el servidor. `after:`/`before:` son exclusivos,
+  así que se manda `after:<desde - 1 día>` y `before:<hasta + 1 día>`
+  para que el rango sea inclusivo.
+- **No se usa** `SINCE`/`BEFORE` de IMAP estándar. Gmail los ignora
+  o los aplica sobre `INTERNALDATE` (fecha de entrega), no sobre el
+  header `Date:`.
+- El `search` de IMAP combina `UNSEEN` (si aplica), `FROM` (si aplica)
+  y `X-GM-RAW` (si hay rango de fechas).
+- **Filtro de precisión en Python** (v0.9): se conserva el filtro por
+  header `Date:` con `parsedate_to_datetime`. Razón: `X-GM-RAW` usa
+  la fecha interna de Gmail, que puede diferir del header en correos
+  reenviados o migrados.
+- El filtro Python se aplica **antes** del chequeo de caché y del
+  filtro de remitente, para descartar correos fuera de rango temprano.
 - `info["omitidos_fecha"]` cuenta los correos descartados por fecha.
+  Con el pre-filtro `X-GM-RAW` activo, este contador debería ser ~0
+  en condiciones normales (solo sube si hay desfase fecha interna vs
+  header `Date:`).
 - El log del job muestra `Fuera de rango (fecha < >). Se omite. Asunto: ...`.
+- **Fallback**: si `X-GM-RAW` no está disponible (proveedor no Gmail),
+  el `search` reintenta sin ese criterio y cae al comportamiento
+  anterior (traer todo y filtrar en Python).
 
 ### Visor PDF/XML
 
@@ -798,6 +812,7 @@ En `static/style.css`:
 17. El catálogo QVET vive en JSON, no en SQLite.
 18. El catálogo se filtra client-side.
 19. Los árboles de reportes se calculan en el backend (solo agregados).
+v0.9.x: el árbol de reportes de Servicios Externos calcula la semana en Python con core.corte_semanal.semanas.semana_de_fecha() (ISO 8601), NO con strftime('%W') de SQLite. La directiva %W de SQLite no es ISO y desfasa una semana respecto al resto del módulo (selector type="week", asegurar_semana, rangoSemana). Todos los árboles de reportes que agrupen por semana deben usar semana_de_fecha().
 20. metodo_pago se normaliza a PUE o PPD al insertar.
 21. El Corte Semanal usa plantilla, no generación a mano.
 22. Los montos del Corte se guardan como TEXT (expresiones 2345+679).
@@ -876,7 +891,19 @@ En `static/style.css`:
     lector_facturas, excel_web, zip_generador) vive en `ingresos/`.
 62. v0.9.x: los scripts de mantenimiento (reparar_archivos,
     limpiar_facturas) viven en `scripts/`.
-63.  v0.9.x: la navegación con Enter/Shift+Enter en celdas numéricas del Corte Semanal es tipo Excel: dentro de la misma columna (día) baja/sube fila por fila, y al llegar al final de la columna salta a la primera (o última, en Shift+Enter) fila editable de la columna siguiente/anterior del mismo bloque. Al terminar la última columna (domingo) pasa al bloque siguiente (Ingresos → Egresos → Por cobrar → Observaciones → ciclo a Ingresos), reset a Lunes fila 1 (o Domingo última fila si es Shift+Enter). Observaciones usa Enter = salto de línea; la navegación entre textareas es con Tab/flechas. No cruza entre sucursales.
+63.  v0.9.x: la navegación con Enter/Shift+Enter en celdas numéricas del Corte Semanal es tipo Excel: dentro de la misma columna (día)   baja/sube fila por fila, y al llegar al final de la columna salta a la primera (o última, en Shift+Enter) fila editable de la columna siguiente/anterior del mismo bloque. Al terminar la última columna (domingo) pasa al bloque siguiente (Ingresos → Egresos → Por cobrar → Observaciones → ciclo a Ingresos), reset a Lunes fila 1 (o Domingo última fila si es Shift+Enter). Observaciones usa Enter = salto de línea; la navegación entre textareas es con Tab/flechas. No cruza entre sucursales.
+64. v0.9.x: el pre-filtro de fecha de Gmail va en `X-GM-RAW` con
+    `after:`/`before:`, NO en `SINCE`/`BEFORE` de IMAP estándar
+    (Gmail los ignora o los aplica sobre `INTERNALDATE`).
+65. v0.9.x: `after:` y `before:` son exclusivos. Para un rango
+    inclusivo `[desde, hasta]`, mandar `after:<desde - 1 día>` y
+    `before:<hasta + 1 día>`.
+66. v0.9.x: el filtro Python por header `Date:` se conserva como
+    verificación de precisión (X-GM-RAW usa la fecha interna de Gmail,
+    que puede diferir del header en correos reenviados o migrados).
+67. v0.9.x: si `X-GM-RAW` no está disponible (proveedor no Gmail),
+    reintentar sin ese criterio y caer al comportamiento anterior
+    (traer todo y filtrar en Python).
 
 ---
 
@@ -919,3 +946,7 @@ NO van a git:
 - [ ] Historial de semanas cerradas en Servicios Externos.
 - [ ] Optimización del filtro de fechas de Gmail (pre-filtro IMAP grueso
       o caché por headers) si el volumen de correos crece.
+- [ ] Tests automáticos del pre-filtro `X-GM-RAW` (bordes de
+      `after:`/`before:`) y del fallback.
+- [ ] Medir rendimiento de la descarga de Gmail con el pre-filtro
+      activo y comparar con el comportamiento anterior (todo el buzón).

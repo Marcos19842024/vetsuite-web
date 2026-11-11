@@ -1,3 +1,128 @@
+# Sesión de trabajo — 2026-11-10 (VetSuite Web v0.9.x — pre-filtro de fechas en Gmail vía X-GM-RAW)
+
+## Resumen
+
+Optimización del filtro de fechas de descarga de Gmail en Ingresos. Antes
+el `search` de IMAP traía **toda** la etiqueta (solo con `UNSEEN`/`FROM`/`ALL`)
+y el filtro de fechas se hacía en Python sobre el header `Date:`. Eso
+escala O(N etiqueta) en descarga de `RFC822` (lo más caro). Ahora Gmail
+pre-filtra en el servidor con `X-GM-RAW` (`after:`/`before:`), y el filtro
+en Python queda solo como verificación de precisión.
+
+Se completó:
+- `X-GM-RAW` con `after:`/`before:` en el `search` de IMAP.
+- Respeto de la exclusividad de `after:`/`before:` (`desde - 1 día`,
+  `hasta + 1 día`).
+- Filtro Python por header `Date:` conservado como red de seguridad
+  (X-GM-RAW usa la fecha interna de Gmail, que puede diferir del header
+  en correos reenviados o migrados).
+- Fallback al comportamiento anterior si `X-GM-RAW` no está disponible
+  (otros proveedores IMAP).
+- `info["omitidos_fecha"]` ahora debería ser ~0 en condiciones normales.
+
+## Qué se hizo
+
+### 1. Pre-filtro IMAP con X-GM-RAW
+
+`X-GM-RAW` es una extensión IMAP de Gmail que permite pasarle la sintaxis
+de búsqueda nativa de Gmail (la misma del buscador web). Se usa para
+pre-filtrar por fecha en el servidor:
+
+    criterios.extend(["X-GM-RAW", f'"{gmail_query}"'])
+
+Donde `gmail_query` se arma con `after:`/`before:`:
+
+    after:<fecha_desde - 1 día>    # exclusivo → incluye fecha_desde
+    before:<fecha_hasta + 1 día>   # exclusivo → incluye fecha_hasta
+
+**Importante:** `after:` y `before:` son **exclusivos**. Si el usuario
+pide `desde=2026-11-05`, hay que mandar `after:2026/11/04`. Si pide
+`hasta=2026-11-05`, hay que mandar `before:2026/11/06`. Errar esto
+pierde el día del borde.
+
+### 2. Por qué NO se usa SINCE/BEFORE de IMAP estándar
+
+Gmail **ignora** `SINCE`/`BEFORE` de IMAP estándar (o los aplica sobre
+`INTERNALDATE`, la fecha de entrega, que no es el header `Date:`). Por
+eso el pre-filtro va en `X-GM-RAW`, que sí es el motor nativo de Gmail
+y respeta la sintaxis `after:`/`before:`.
+
+### 3. Filtro Python conservado
+
+El filtro por header `Date:` con `parsedate_to_datetime` se mantiene.
+Razón: `X-GM-RAW` con `after:`/`before:` usa la fecha **interna** de
+Gmail, que para correos recientes coincide casi siempre con el header
+`Date:`, pero puede diferir en correos reenviados o migrados. El filtro
+Python es la verificación de precisión final.
+
+### 4. Fallback
+
+Si `X-GM-RAW` no está disponible (otros proveedores IMAP, o Gmail
+cambiara la extensión), el `search` debe reintentar sin ese criterio
+y caer al comportamiento anterior (traer todo y filtrar en Python).
+Esto mantiene la compatibilidad sin romper el flujo.
+
+## Bugs resueltos en esta sesión
+
+- **Descarga de Gmail leía toda la etiqueta y filtraba en Python**:
+  O(N etiqueta) en descarga de `RFC822`. Fix: pre-filtro en servidor
+  con `X-GM-RAW` (`after:`/`before:`), y filtro Python como verificación.
+- **Bordes del rango perdían un día**: `after:`/`before:` son exclusivos.
+  Fix: `desde - 1 día` y `hasta + 1 día`.
+
+## Estado actual
+
+### Funcional
+- ✅ Ingresos con pre-filtro de fechas en servidor (`X-GM-RAW`).
+- ✅ Filtro Python por `Date:` conservado como verificación.
+- ✅ Fallback si `X-GM-RAW` no está disponible.
+- ✅ Todos los módulos anteriores siguen funcionando (Egresos,
+  Recordatorios, Servicios Externos, Corte Semanal, Catálogo QVET).
+
+### Pendiente (Ingresos)
+- Medir rendimiento con rango de 3-4 días y comparar con el
+  comportamiento anterior (todo el buzón).
+- Tests automáticos del pre-filtro (bordes de `after:`/`before:`) y
+  del fallback.
+
+### Pendiente (global, arrastrado)
+- Tests automáticos (Recordatorios, Ingresos, Egresos, Corte,
+  Servicios Externos).
+- Documentación de instalación en Windows 11.
+- Arranque automático con el sistema.
+- Revisar `iicio.txt` y borrarlo.
+- Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Probar Ingresos: `http://127.0.0.1:8000/ingresos`
+- Para validar el pre-filtro: descargar con un rango de un solo día
+  (`desde = hasta`) y verificar que entra exactamente ese día.
+- Revisar el log generado por `_ruta_log()`: debe aparecer la línea
+  `Pre-filtro Gmail (X-GM-RAW): after:... before:...`.
+- `info["omitidos_fecha"]` ahora debería ser ~0. Si sube, revisar
+  bordes de `after:`/`before:` o desfase fecha interna Gmail vs
+  header `Date:`.
+
+## Reglas nuevas (Ingresos / Gmail)
+
+68. El pre-filtro de fecha de Gmail va en `X-GM-RAW` con
+    `after:`/`before:`. NO en `SINCE`/`BEFORE` de IMAP estándar
+    (Gmail los ignora).
+69. `after:` y `before:` son exclusivos. Para un rango inclusivo
+    `[desde, hasta]`, mandar `after:desde - 1 día` y
+    `before:hasta + 1 día`.
+70. El filtro Python por header `Date:` se conserva como verificación
+    de precisión (X-GM-RAW usa la fecha interna de Gmail, que puede
+    diferir del header en correos reenviados).
+71. Si `X-GM-RAW` falla (proveedor no Gmail), reintentar sin ese
+    criterio y caer al comportamiento anterior (traer todo y filtrar
+    en Python).
+
+# Sesión de trabajo — 2026-11-10 (VetSuite Web v0.9.x — bug de servicios externos y corte semanal)
+Bug resuelto: el "Ver registros" de Servicios Externos mostraba la semana 44 para registros del 5 de noviembre (que es semana ISO 45). Causa: el endpoint /servicios_externos/arbol agrupaba con strftime('%W', fecha) de SQLite, que no es ISO 8601. Fix: agrupar por semana en Python con semana_de_fecha(), igual que el resto del módulo.
+
 # Sesión de trabajo — 2026-11-08 (VetSuite Web v0.9.x — refactor de estructura)
 
 ## Resumen

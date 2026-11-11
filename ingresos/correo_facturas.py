@@ -168,9 +168,20 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
             return descargados, errores, info
 
         # ---- Criterios de búsqueda IMAP ----
-        # IMPORTANTE: NO usar SINCE/BEFORE. Gmail los ignora o los aplica
-        # sobre INTERNALDATE (fecha de entrega), no sobre el header Date:.
-        # El filtro de fecha real se hace en Python mas abajo.
+        # Usamos X-GM-RAW para que Gmail pre-filtre por fecha en el servidor.
+        # Gmail ignora SINCE/BEFORE de IMAP estándar (o los aplica sobre
+        # INTERNALDATE, que no es el header Date:). X-GM-RAW sí respeta
+        # la sintaxis nativa de Gmail (after:/before:), que es lo que
+        # queremos para no descargar toda la etiqueta.
+        #
+        # after:/before: son EXCLUSIVOS, así que:
+        #   - after: fecha_desde - 1 día  (para incluir fecha_desde)
+        #   - before: fecha_hasta + 1 día (para incluir fecha_hasta)
+        #
+        # El filtro en Python sobre el header Date: se mantiene como
+        # verificación de precisión (X-GM-RAW usa la fecha interna de
+        # Gmail, que puede diferir del header Date: en correos reenviados).
+
         criterios = []
         if solo_no_leidos:
             criterios.append("UNSEEN")
@@ -181,6 +192,22 @@ def descargar_adjuntos_gmail(usuario, password_app, etiqueta,
                 rem = f'"{rem}"'
             criterios.extend(["FROM", rem])
             log(f"Filtro de remitente (IMAP): {rem}")
+
+        # Pre-filtro de fecha del lado de Gmail vía X-GM-RAW
+        gmail_query_parts = []
+        if fecha_desde_dt:
+            from datetime import timedelta
+            d = fecha_desde_dt - timedelta(days=1)
+            gmail_query_parts.append(f"after:{d.strftime('%Y/%m/%d')}")
+        if fecha_hasta_dt:
+            from datetime import timedelta
+            d = fecha_hasta_dt + timedelta(days=1)
+            gmail_query_parts.append(f"before:{d.strftime('%Y/%m/%d')}")
+
+        if gmail_query_parts:
+            gmail_query = " ".join(gmail_query_parts)
+            criterios.extend(["X-GM-RAW", f'"{gmail_query}"'])
+            log(f"Pre-filtro Gmail (X-GM-RAW): {gmail_query}")
 
         if not criterios:
             criterios = ["ALL"]

@@ -22,8 +22,4 @@ pip install -r requirements.txt
 Si aparece, pero uvicorn no se reconoce, usa siempre:
 .\venv\Scripts\uvicorn.exe main:app --reload
 
-Nota:
-Arreglar lo de gmail porque lee todo y con el tiempo tardará más
-Servicios externos que sta desfazado una semana el ver registros
-
 cd C:\vetsuite-web C:\vetsuite-web\venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000

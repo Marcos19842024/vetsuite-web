@@ -289,28 +289,41 @@ def listar_semanas(anio: int | None = None):
 
 @router.get("/arbol")
 def arbol():
-    """Árbol Año → Mes → Semana ISO → Concepto → Estado."""
+    """Árbol Año → Mes → Semana ISO → Concepto → Estado.
+
+    La semana se calcula en Python con `semana_de_fecha` (ISO 8601), NO con
+    `strftime('%W')` de SQLite, porque esa directiva no es ISO y desfasa
+    una semana respecto al resto del módulo.
+    """
     with get_conn() as conn:
         filas = conn.execute("""
             SELECT
-                strftime('%Y', fecha) AS anio,
-                strftime('%m', fecha) AS mes,
-                strftime('%W', fecha) AS semana,
+                fecha,
                 concepto,
                 CASE WHEN TRIM(COALESCE(fecha_pago,'')) = '' THEN 'pendiente' ELSE 'pagado' END AS estado,
                 COUNT(*) AS n,
                 SUM(total) AS total
             FROM servicios_externos
             WHERE fecha IS NOT NULL AND fecha != ''
-            GROUP BY anio, mes, semana, concepto, estado
-            ORDER BY anio DESC, mes DESC, semana DESC, concepto ASC, estado ASC
+            GROUP BY fecha, concepto, estado
+            ORDER BY fecha ASC, concepto ASC, estado ASC
         """).fetchall()
 
     arbol = {}
     for r in filas:
-        a, m, s = r["anio"], r["mes"], r["semana"]
-        c, est = r["concepto"] or "Sin concepto", r["estado"]
-        n, t = r["n"], round(r["total"] or 0, 2)
+        try:
+            y, m, d = map(int, r["fecha"].split("-"))
+        except (ValueError, AttributeError):
+            continue
+        anio_iso, sem_iso = semana_de_fecha(date(y, m, d))
+
+        a = f"{anio_iso:04d}"
+        m = f"{m:02d}"
+        s = f"{sem_iso:02d}"
+        c = r["concepto"] or "Sin concepto"
+        est = r["estado"]
+        n = r["n"]
+        t = round(r["total"] or 0, 2)
 
         # Nivel estado
         arbol.setdefault(a, {}) \
