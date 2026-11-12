@@ -1,25 +1,20 @@
-cd C:\vetsuite-web
-python -m venv venv
-.\venv\Scripts\activate.ps1
- where python
-pip install -r requirements.txt
 
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 npx qrdev uvicorn main:app --host 0.0.0.0 --port 8000
 
-Si incluso después de activarlo sigue sin funcionar
-Entonces es que la carpeta Scripts del entorno virtual no está en PATH. Verifica manualmente si uvicorn.exe existe:
 
-dir .\venv\Scripts\uvicorn*
+#############################. servidor en mac. ##########################################
+Detener el servicio:
+sudo launchctl bootout system/com.vetsuite.web
+vetsuite-stop
 
-cd C:\vetsuite-web
-dir venv\Scripts\uvicorn*
+Arrancarlo de nuevo:
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.vetsuite.web.plist
+vetsuite-start
 
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+Ver logs en vivo:
+tail -f /Users/marcos/Applications/vetsuite_web/vetsuite_error.log
 
-Si aparece, pero uvicorn no se reconoce, usa siempre:
-.\venv\Scripts\uvicorn.exe main:app --reload
-
-cd C:\vetsuite-web C:\vetsuite-web\venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+En desarrollo
+vetsuite-dev
