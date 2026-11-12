@@ -13,6 +13,10 @@ Arrancarlo de nuevo:
 sudo launchctl bootstrap system /Library/LaunchDaemons/com.vetsuite.web.plist
 vetsuite-start
 
+Estado del servicio:
+sudo launchctl list | grep vetsuite && sudo lsof -i :8000
+vetsuite-status
+
 Ver logs en vivo:
 tail -f /Users/marcos/Applications/vetsuite_web/vetsuite_error.log
 
