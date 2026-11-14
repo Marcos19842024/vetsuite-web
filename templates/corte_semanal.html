@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Corte Semanal{% endblock %}
 {% block content %}
+<!-- Header -->
 <div class="page-header mb-3">
   <div class="row align-items-center">
     <div class="col">
@@ -551,6 +552,11 @@ window.CORTE = {
       return;
     }
 
+    // Al hacer clic, darle foco para que Enter funcione sobre la celda
+    td.addEventListener('click', () => {
+      td.focus();
+    });
+
     // Doble clic → modal
     td.addEventListener('dblclick', () => {
       abrirModal(td);
@@ -628,22 +634,32 @@ window.CORTE = {
     const bloque = td.closest('.bloque');
     if (!fila || !tabla || !bloque) { td.blur(); return; }
 
-    const colIndex = td.cellIndex;                 // 1..7 = día (0 = Concepto)
+    const colIndex = td.cellIndex;
     const DIA_MIN = 1, DIA_MAX = 7;
+
+    // Enfocar + scroll visible, en el siguiente frame para que el navegador
+    // ya haya terminado de pintar el cambio de sub-tab (si hubo).
+    const enfocar = (c) => {
+      if (!c) return;
+      // 1. Asegurar que el contenedor haga scroll hasta la celda (instantáneo)
+      c.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      // 2. Enfocar en el siguiente frame para que el navegador pinte el :focus
+      requestAnimationFrame(() => c.focus({ preventScroll: true }));
+    };
 
     // 1) Dentro de la misma columna (misma tabla)
     if (dir > 0) {
       let f = fila.nextElementSibling;
       while (f) {
         const c = f.children[colIndex];
-        if (c && c.classList.contains('corte-celda-td')) { c.focus(); return; }
+        if (c && c.classList.contains('corte-celda-td')) { enfocar(c); return; }
         f = f.nextElementSibling;
       }
     } else {
       let f = fila.previousElementSibling;
       while (f) {
         const c = f.children[colIndex];
-        if (c && c.classList.contains('corte-celda-td')) { c.focus(); return; }
+        if (c && c.classList.contains('corte-celda-td')) { enfocar(c); return; }
         f = f.previousElementSibling;
       }
     }
@@ -654,7 +670,7 @@ window.CORTE = {
       const c = dir > 0
         ? editableEnColumna(tabla, colSiguiente)
         : ultimaEditableEnColumna(tabla, colSiguiente);
-      if (c) { c.focus(); return; }
+      if (c) { enfocar(c); return; }
     }
 
     // 3) Cambio de bloque dentro de la MISMA sucursal (con ciclo)
@@ -668,14 +684,11 @@ window.CORTE = {
     const idxActual = bloques.indexOf(bloque);
     if (idxActual === -1) { td.blur(); return; }
 
-    // Helper: activa la sub-tab del bloque destino (quita d-none, marca nav-link)
     const activarSubtab = (bloqueDestino) => {
       const nombre = bloqueDestino.dataset.bloque;
-      // Ocultar todos los bloques y desmarcar todos los nav-link
       contenedorSuc.querySelectorAll('.bloque').forEach(b => b.classList.add('d-none'));
       contenedorSuc.querySelectorAll(`#subtabs-${sucursal} .nav-link`)
         .forEach(t => t.classList.remove('active'));
-      // Mostrar el destino y marcar su tab
       bloqueDestino.classList.remove('d-none');
       const tab = contenedorSuc.querySelector(
         `#subtabs-${sucursal} .nav-link[data-bloque="${nombre}"]`
@@ -688,22 +701,30 @@ window.CORTE = {
       const t = destino.querySelector('table');
       if (!t) return false;
 
-      // Primero activar la sub-tab (si no, focus() no funciona en bloque oculto)
       activarSubtab(destino);
 
-      // Observaciones: textareas, sin columna.
+      // Cuando cambiamos de bloque, el destino puede haber estado oculto.
+      // Esperar DOS frames: uno para que el display:block se aplique,
+      // otro para que el layout esté listo y el focus pinte.
+      const enfocarDiferido = (c) => {
+        if (!c) return;
+        requestAnimationFrame(() => {
+          c.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+          requestAnimationFrame(() => c.focus({ preventScroll: true }));
+        });
+      };
+
       if (destino.dataset.bloque === 'observaciones') {
         const textos = destino.querySelectorAll('textarea.corte-obs');
         if (!textos.length) return false;
-        (dir > 0 ? textos[0] : textos[textos.length - 1]).focus();
+        enfocarDiferido(dir > 0 ? textos[0] : textos[textos.length - 1]);
         return true;
       }
 
-      // Bloque normal: al bajar → Lunes fila 1; al subir → Domingo última fila.
       const c = dir > 0
         ? editableEnColumna(t, DIA_MIN)
         : ultimaEditableEnColumna(t, DIA_MAX);
-      if (c) { c.focus(); return true; }
+      if (c) { enfocarDiferido(c); return true; }
       return false;
     };
 
@@ -819,22 +840,35 @@ window.CORTE = {
     const modalObs     = document.getElementById('modal-celda-obs');
     const valor = (modalInput?.value || '').trim();
 
-    // ===== NUEVO: obs solo si el wrap está visible =====
+    // obs solo si el wrap está visible
     const obs = (!modalObsWrap.classList.contains('d-none'))
                 ? (modalObs?.value || '').trim()
                 : undefined;
-    // ===== FIN NUEVO =====
 
+    // Actualizar el td original de inmediato (feedback visual)
     td.dataset.raw = valor;
     const span = td.querySelector('.corte-valor');
     if (span) span.textContent = fmt(evalExpr(valor));
 
     const payload = { fecha, sucursal, campo, valor };
     if (subcampo) payload.subcampo = subcampo;
-    if (obs !== undefined) payload.obs = obs;   // ===== NUEVO =====
+    if (obs !== undefined) payload.obs = obs;
 
-    guardarRaw(payload).then(() => navegarEnter(td, +1));
+    // 1) Quitar el foco del td original ANTES de cerrar el modal.
+    //    El <dialog> nativo restaura el foco al elemento que lo abrió;
+    //    si el td original no tiene foco, restaura al <body> y no pisa
+    //    el focus que pone navegarEnter después.
+    td.blur();
+
+    // 2) Cerrar el modal.
     cerrarModal();
+
+    // 3) Guardar y, cuando termine, navegar a la siguiente celda.
+    //    El requestAnimationFrame le da tiempo al <dialog> a terminar
+    //    de cerrarse y al navegador a pintar el cambio de foco.
+    guardarRaw(payload).then(() => {
+      requestAnimationFrame(() => navegarEnter(td, +1));
+    });
   }
 
   function actualizarTotalModal() {

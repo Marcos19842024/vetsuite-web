@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if conv else 'Nuevo' }} convenio{% endblock %}
+{% block content %}
+<!-- Header -->
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+          <h2 class="m-0">{{ 'Editar' if conv else 'Nuevo' }} convenio</h2>
+        </div>
+        <div class="col-auto btn-list">
+            {% if conv %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" title="Imprimir"
+                    onclick="imprimirConvenio({{ conv.id }})">
+              <i class="ti ti-printer" style="font-size: 1.15rem;"></i>
+            </button>
+            {% endif %}
+            <button class="btn btn-outline-primary btn-sm" onclick="guardar()">
+              Guardar
+            </button>
+            <a href="/convenios" class="btn btn-outline-secondary btn-sm">← Volver a Convenios</a>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  
+  <div>
+    
+  </div>
+</div>
+
+<form id="form-conv" onsubmit="return false;">
+
+  <!-- Datos del propietario -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Datos del propietario</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label class="form-label">Nombre del propietario *</label>
+          <input type="text" class="form-control" id="f-propietario" required
+                  value="{{ conv.propietario if conv else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">RFC (opcional, para búsqueda)</label>
+          <input type="text" class="form-control" id="f-rfc"
+                  value="{{ conv.rfc if conv and conv.rfc else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Teléfono</label>
+          <input type="text" class="form-control" id="f-telefono" required
+                  value="{{ conv.telefono if conv else '' }}">
+        </div>
+        <div class="col-md-12">
+          <label class="form-label">Dirección</label>
+          <input type="text" class="form-control" id="f-direccion" required
+                  value="{{ conv.direccion if conv else '' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Datos de la mascota -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Datos de la mascota</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Nombre de la mascota *</label>
+          <input type="text" class="form-control" id="f-mascota" required
+                  value="{{ conv.mascota if conv else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">NHC (Número de Historia Clínica)</label>
+          <input type="text" class="form-control" id="f-nhc"
+                  value="{{ conv.nhc if conv else '' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deuda -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Deuda y vencimiento</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Fecha del convenio *</label>
+          <input type="date" class="form-control" id="f-fecha" required
+                  value="{{ conv.fecha if conv else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Fecha de vencimiento *</label>
+          <input type="date" class="form-control" id="f-vencimiento" required
+                  value="{{ conv.fecha_vencimiento if conv else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Monto total (MXN) *</label>
+          <input type="number" step="0.01" class="form-control monto-total" id="f-total" required
+                  value="{{ '%.2f'|format(conv.monto_total) if conv else '' }}" oninput="actualizarTotal()">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Monto en letra (auto)</label>
+          <input type="text" class="form-control" id="f-letra" readonly
+                  value="{{ conv.monto_letra if conv else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Lugar de pago</label>
+          <select class="form-select" id="f-lugar">
+            <option value="recepcion" {% if conv and conv.lugar_pago == 'recepcion' %}selected{% endif %}>Recepción de la clínica</option>
+            <option value="transferencia" {% if conv and conv.lugar_pago == 'transferencia' %}selected{% endif %}>Transferencia bancaria</option>
+            <option value="ambos" {% if conv and conv.lugar_pago == 'ambos' %}selected{% endif %}>Ambos</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Cuenta bancaria (opcional, sobreescribe config)</label>
+          <input type="text" class="form-control" id="f-cuenta"
+                  placeholder="{{ cfg.clinica.cuenta_bancaria or 'CLABE / cuenta' }}"
+                  value="{{ conv.cuenta_bancaria if conv else '' }}">
+        </div>
+        <div class="col-12">
+          <label class="form-label">Notas</label>
+          <textarea class="form-control" id="f-notas" rows="2">{{ conv.notas if conv else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Plan de pagos -->
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Plan de pagos</strong>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="agregarPago()">
+        + Agregar pago
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table pagos-tabla mb-2">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 40px;">#</th>
+              <th style="width: 130px;">Fecha</th>
+              <th style="width: 110px;">Importe</th>
+              <th style="width: 70px;">Efectuado</th>
+              <th style="width: 120px;">Albarán</th>
+              <th>Factura</th>
+              <th style="width: 130px;">Tipo de pago</th>
+              <th style="width: 40px;"></th>
+            </tr>
+          </thead>
+          <tbody id="pagos-body"></tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between text-muted">
+        <span>Suma de pagos: <strong id="suma-pagos">$0.00</strong></span>
+        <span id="aviso-suma"></span>
+      </div>
+    </div>
+  </div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PAGOS_INICIALES = {{ pagos|tojson if pagos else '[]' }};
+const CONV_ID = {{ conv.id if conv else 'null' }};
+
+const TIPOS_PAGO = ['', 'Efectivo', 'Transferencia', 'Tarjeta de crédito', 'Tarjeta de débito', 'Otro'];
+
+// ---------- Pagos dinámicos ----------
+
+function agregarPago(pago = null) {
+  const body = document.getElementById('pagos-body');
+  const tr = document.createElement('tr');
+
+  const opciones = TIPOS_PAGO.map(t =>
+    `<option value="${t}" ${pago && pago.tipo_pago === t ? 'selected' : ''}>${t || '—'}</option>`
+  ).join('');
+
+  tr.innerHTML = `
+    <td class="num-pago"></td>
+    <td><input type="date" class="form-control pago-fecha" value="${pago ? pago.fecha : ''}"></td>
+    <td><input type="number" step="0.01" class="form-control pago-importe" value="${pago ? pago.importe : ''}" oninput="actualizarSuma()"></td>
+    <td class="text-center"><input type="checkbox" class="form-check-input pago-efectuado" ${pago && pago.efectuado ? 'checked' : ''}></td>
+    <td><input type="text" class="form-control pago-albaran" value="${pago ? (pago.albaran || '') : ''}"></td>
+    <td>
+      <div class="input-group input-group-sm">
+        <input type="text" class="form-control pago-factura" value="${pago ? (pago.factura_numero || '') : ''}" placeholder="Núm. factura">
+        <button type="button" class="btn btn-outline-secondary btn-icon pago-buscar" title="Buscar factura del cliente">
+          <i class="ti ti-search me-1" style="font-size: 1.15rem;"></i>
+        </button>
+      </div>
+      <input type="hidden" class="pago-factura-uuid" value="${pago ? (pago.factura_uuid || '') : ''}">
+    </td>
+    <td>
+      <select class="form-select form-select-sm pago-tipo">${opciones}</select>
+    </td>
+    <td class="text-center">
+      <button type="button" class="btn btn-sm btn-outline-danger btn-icon" onclick="this.closest('tr').remove(); renumerarPagos(); actualizarSuma();">
+        <i class="ti ti-trash" style="font-size: 1.15rem;"></i>
+      </button>
+    </td>
+  `;
+  tr.querySelector('.pago-buscar').addEventListener('click', () => buscarFacturaFila(tr));
+  body.appendChild(tr);
+  renumerarPagos();
+  actualizarSuma();
+}
+
+function renumerarPagos() {
+  document.querySelectorAll('#pagos-body tr').forEach((tr, i) => {
+    tr.querySelector('.num-pago').textContent = i + 1;
+  });
+}
+
+function actualizarSuma() {
+  let suma = 0;
+  document.querySelectorAll('#pagos-body .pago-importe').forEach(inp => {
+    suma += parseFloat(inp.value || 0);
+  });
+  const total = parseFloat(document.getElementById('f-total').value || 0);
+  document.getElementById('suma-pagos').textContent = '$' + suma.toFixed(2);
+  const aviso = document.getElementById('aviso-suma');
+  if (Math.abs(suma - total) < 0.01 && total > 0) {
+    aviso.innerHTML = '<span class="badge-ok">Suma correcta</span>';
+  } else if (total > 0) {
+    aviso.innerHTML = '<span class="badge-warn">Diferencia: $' + (total - suma).toFixed(2) + '</span>';
+  } else {
+    aviso.innerHTML = '';
+  }
+}
+
+function actualizarTotal() {
+  actualizarSuma();
+  const total = parseFloat(document.getElementById('f-total').value || 0);
+  if (total <= 0) return;
+  fetch('/convenios/numero-a-letras?monto=' + total)
+    .then(r => r.json())
+    .then(d => { if (d.ok) document.getElementById('f-letra').value = d.letra; })
+    .catch(() => {});
+}
+
+// ---------- Búsqueda de factura por fila ----------
+
+async function buscarFacturaFila(tr) {
+  const nombre = document.getElementById('f-propietario').value.trim();
+  const rfc = document.getElementById('f-rfc').value.trim();
+  if (!nombre && !rfc) {
+    alert('Captura el nombre o RFC del propietario primero.');
+    return;
+  }
+  const url = '/convenios/buscar-cliente?q=' + encodeURIComponent(nombre) + '&rfc=' + encodeURIComponent(rfc);
+  const r = await fetch(url);
+  const data = await r.json();
+  if (!data.ok || !data.ingreso) {
+    alert('No se encontró factura a nombre del cliente (o es público en general).');
+    return;
+  }
+  const ing = data.ingreso;
+  tr.querySelector('.pago-factura').value = ing.folio || '';
+  tr.querySelector('.pago-factura-uuid').value = ing.folio_fiscal || '';
+  if (ing.pagado_con_tarjeta) {
+    tr.querySelector('.pago-tipo').value = 'Tarjeta de crédito';
+  }
+  // Si la fila no tiene importe, sugerir el total de la factura
+  const imp = tr.querySelector('.pago-importe');
+  if (!imp.value && ing.total) imp.value = ing.total.toFixed(2);
+  actualizarSuma();
+}
+
+// ---------- Guardar ----------
+
+async function guardar() {
+  const propietario = document.getElementById('f-propietario').value.trim();
+  const mascota = document.getElementById('f-mascota').value.trim();
+  const fecha = document.getElementById('f-fecha').value;
+  const vencimiento = document.getElementById('f-vencimiento').value;
+  const total = parseFloat(document.getElementById('f-total').value || 0);
+  if (!propietario || !mascota || !fecha || !vencimiento || total <= 0) {
+    alert('Completa propietario, mascota, fecha, vencimiento y monto total.');
+    return;
+  }
+  const pagos = [];
+  document.querySelectorAll('#pagos-body tr').forEach(tr => {
+    const f = tr.querySelector('.pago-fecha').value;
+    const imp = parseFloat(tr.querySelector('.pago-importe').value || 0);
+    const ef = tr.querySelector('.pago-efectuado').checked;
+    if (f && imp > 0) {
+      pagos.push({
+        fecha: f,
+        importe: imp,
+        efectuado: ef ? 1 : 0,
+        albaran: tr.querySelector('.pago-albaran').value,
+        factura_numero: tr.querySelector('.pago-factura').value,
+        factura_uuid: tr.querySelector('.pago-factura-uuid').value,
+        tipo_pago: tr.querySelector('.pago-tipo').value,
+        pagado_con_tarjeta: /tarjeta/i.test(tr.querySelector('.pago-tipo').value) ? 1 : 0,
+      });
+    }
+  });
+  const payload = {
+    id: CONV_ID,
+    propietario, mascota,
+    fecha, fecha_vencimiento: vencimiento,
+    monto_total: total,
+    monto_letra: document.getElementById('f-letra').value,
+    telefono: document.getElementById('f-telefono').value,
+    direccion: document.getElementById('f-direccion').value,
+    nhc: document.getElementById('f-nhc').value,
+    lugar_pago: document.getElementById('f-lugar').value,
+    cuenta_bancaria: document.getElementById('f-cuenta').value,
+    notas: document.getElementById('f-notas').value,
+    pagos,
+  };
+  const r = await fetch('/convenios/guardar', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (data.ok) {
+    window.location.href = '/convenios';
+  } else {
+    alert(data.error || 'Error al guardar.');
+  }
+}
+
+function imprimirConvenio(id) {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '1px';
+  iframe.style.height = '1px';
+  iframe.style.opacity = '0';
+  iframe.style.border = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.src = `/convenios/${id}/imprimir`;
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      console.error('No se pudo imprimir:', e);
+      // Fallback: abrir en pestaña nueva
+      window.open(`/convenios/${id}/imprimir?auto=1`, '_blank');
+    }
+  };
+  // Limpiar el iframe después de imprimir (o al cancelar)
+  const limpiar = () => setTimeout(() => iframe.remove(), 1000);
+  iframe.contentWindow?.addEventListener?.('afterprint', limpiar);
+  // Fallback por si afterprint no dispara
+  setTimeout(limpiar, 60000);
+  document.body.appendChild(iframe);
+}
+
+// ---------- Init ----------
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!document.getElementById('f-fecha').value) {
+    document.getElementById('f-fecha').value = new Date().toISOString().slice(0, 10);
+  }
+  PAGOS_INICIALES.forEach(p => agregarPago(p));
+  if (PAGOS_INICIALES.length === 0) agregarPago();
+  actualizarTotal();
+});
+</script>
+{% endblock %}

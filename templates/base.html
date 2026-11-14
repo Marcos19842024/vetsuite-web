@@ -68,6 +68,15 @@
                             </li>
                         {% endif %}
 
+                        {% if 'convenios' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/convenios') %}active{% endif %}">
+                                <a class="nav-link" href="/convenios">
+                                    <span class="nav-link-icon"><i class="ti ti-file-text" style="font-size: 1.25rem;"></i></span>
+                                    <span class="nav-link-title">Convenios</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
                         {% if es_admin_ip(request) %}
                             <li class="nav-item {% if request.url.path.startswith('/admin_ips') %}active{% endif %}">
                                 <a class="nav-link" href="/admin_ips">

@@ -4,11 +4,11 @@ from pathlib import Path
 from shared.rutas import IP_PERMISOS as RUTA
 
 _DEFAULT = {
-    "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios"],
+    "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios"],
     "ips": {
         "127.0.0.1": {
             "nombre": "Servidor / Administrador",
-            "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios"],
+            "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios"],
         }
     },
     "admin ips": ["127.0.0.1"],
@@ -72,7 +72,7 @@ def es_admin(ip: str) -> bool:
 
 
 def modulo_de_path(path: str):
-    for m in ("ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios"):
+    for m in ("ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios"):
         if path == f"/{m}" or path.startswith(f"/{m}/"):
             return m
     return None

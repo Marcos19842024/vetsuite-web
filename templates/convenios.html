@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Convenios de pago{% endblock %}
+{% block content %}
+<!-- Header -->
+  <div class="page-header mb-3">
+    <div class="row align-items-center">
+      <div class="col">
+        <h2 class="page-title">Convenios de pago</h2>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra de herramientas -->
+  <div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <div class="btn-list">
+        {% if alertas %}
+        <h4
+          class="card-title mb-0">
+          <i class="ti ti-bell me-1" style="font-size: 1.15rem;"></i> Alertas de cobranza ({{ alertas|length }})
+        </h4>
+        {% endif %}
+      </div>
+
+      <div class="ms-auto btn-list">
+        {% if alertas %}
+        <button class="btn btn-sm btn-outline-secondary" onclick="marcarTodasVistas()">
+          Marcar todas como vistas
+        </button>
+        {% endif %}
+        <a href="/convenios/nuevo" class="btn btn-outline-primary btn-sm">
+          + Nuevo convenio
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {% if alertas %}
+  <div class="alerta-banner {% if alertas|selectattr('alerta.tipo','equalto','vencido')|list %}vencido{% endif %}">
+    {% for a in alertas %}
+    <div class="alerta-item" data-id="{{ a.id }}">
+      <div>
+        {% if a.alerta.tipo == 'vencido' %}
+          <span class="badge-estado badge-vencido">Vencido hace {{ a.alerta.dias }} día(s)</span>
+        {% else %}
+          <span class="badge-estado badge-por-vencer">Vence en {{ a.alerta.dias }} día(s)</span>
+        {% endif %}
+        <strong class="ms-2">{{ a.propietario }}</strong>
+        {% if a.mascota %}— {{ a.mascota }}{% endif %}
+        <span class="text-muted ms-2">{{ a.folio }}</span>
+        <span class="monto">Pendiente: ${{ "%.2f"|format(a.pendiente) }}</span>
+        <a href="/convenios/{{ a.id }}/editar" class="btn btn-sm btn-outline-primary">Ver</a>
+        <button class="btn btn-sm btn-outline-secondary" onclick="marcarVista({{ a.id }})" title="Marcar como vista">
+          <i class="ti ti-check" style="font-size: 1.15rem;"></i>
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body p-0">
+      <table class="table table-hover tabla-conv mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Folio</th>
+            <th>Fecha</th>
+            <th>Cliente</th>
+            <th>Mascota / NHC</th>
+            <th class="monto">Total</th>
+            <th class="monto">Pagado</th>
+            <th class="monto">Pendiente</th>
+            <th>Vence</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in convenios %}
+          <tr data-id="{{ c.id }}" style="cursor: pointer;">
+            <td><strong>{{ c.folio or '—' }}</strong></td>
+            <td>{{ c.fecha }}</td>
+            <td>
+              {{ c.propietario }}
+              {% if c.telefono %}<br><small class="text-muted">{{ c.telefono }}</small>{% endif %}
+            </td>
+            <td>
+              {{ c.mascota }}
+              {% if c.nhc %} <small class="text-muted">({{ c.nhc }})</small>{% endif %}
+            </td>
+            <td class="monto">${{ "%.2f"|format(c.monto_total) }}</td>
+            <td class="monto">${{ "%.2f"|format(c.pagado) }}</td>
+            <td class="monto">${{ "%.2f"|format(c.pendiente) }}</td>
+            <td class="{% if c.alerta %}{% if c.alerta.tipo == 'vencido' %}celda-vencida{% else %}celda-por-vencer{% endif %}{% endif %}">
+              {{ c.fecha_vencimiento or '—' }}
+              {% if c.alerta %}
+                <br><small>
+                  {% if c.alerta.tipo == 'vencido' %}
+                    ({{ c.alerta.dias }}d de atraso)
+                  {% else %}
+                    (en {{ c.alerta.dias }}d)
+                  {% endif %}
+                </small>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge-estado badge-{{ c.estado }}">{{ c.estado }}</span>
+            </td>
+            <td class="acciones">
+              {% if c.estado == 'borrador' %}
+              <button class="btn btn-sm btn-outline-danger" onclick="eliminarConvenio({{ c.id }})" title="Eliminar">
+                <i class="ti ti-trash" style="font-size: 1.15rem;"></i>
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="10" class="text-center text-muted py-4">
+              No hay convenios registrados.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function marcarVista(id) {
+    await fetch(`/convenios/${id}/alerta-vista`, {method: 'POST'});
+    document.querySelector(`.alerta-item[data-id="${id}"]`)?.remove();
+  }
+  async function marcarTodasVistas() {
+    const ids = [...document.querySelectorAll('.alerta-item')].map(el => el.dataset.id);
+    for (const id of ids) await fetch(`/convenios/${id}/alerta-vista`, {method: 'POST'});
+    location.reload();
+  }
+  async function eliminarConvenio(id) {
+    if (!confirm('¿Eliminar este convenio en borrador?')) return;
+    const r = await fetch(`/convenios/${id}/eliminar`, {method: 'POST'});
+    const data = await r.json();
+    if (data.ok) location.reload();
+    else alert(data.error || 'No se pudo eliminar.');
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.tabla-conv tbody tr[data-id]').forEach(tr => {
+      tr.addEventListener('dblclick', () => {
+        window.location.href = `/convenios/${tr.dataset.id}/editar`;
+      });
+    });
+  });
+</script>
+{% endblock %}

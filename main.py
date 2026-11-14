@@ -7,7 +7,7 @@ from shared.db import init_db
 from core import permisos_ip
 from shared.templates_shared import templates
 from routers import (
-    corte_semanal, ingresos, egresos, recordatorios, config_gmail, uploads, rechazados,
+    convenios, corte_semanal, ingresos, egresos, recordatorios, config_gmail, uploads, rechazados,
     admin_ips, servicios_externos
 )
 
@@ -68,6 +68,7 @@ app.include_router(recordatorios.router)
 app.include_router(config_gmail.router)
 app.include_router(rechazados.router)
 app.include_router(uploads.router)
+app.include_router(convenios.router)
 app.include_router(admin_ips.router)
 
 

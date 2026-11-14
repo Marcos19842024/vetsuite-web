@@ -194,6 +194,66 @@ def init_db():
     conn.execute("CREATE INDEX IF NOT EXISTS idx_serv_ext_pago ON servicios_externos(fecha_pago)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_serv_ext_concepto ON servicios_externos(concepto)")
 
+    # --- Convenios ---
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS convenios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folio TEXT UNIQUE,
+            fecha TEXT NOT NULL,
+            propietario TEXT NOT NULL,
+            telefono TEXT DEFAULT '',
+            direccion TEXT DEFAULT '',
+            mascota TEXT DEFAULT '',
+            nhc TEXT DEFAULT '',
+            monto_total REAL NOT NULL DEFAULT 0,
+            monto_letra TEXT DEFAULT '',
+            fecha_vencimiento TEXT DEFAULT '',
+            lugar_pago TEXT DEFAULT 'recepcion',
+            cuenta_bancaria TEXT DEFAULT '',
+            ingreso_id INTEGER,
+            albaran TEXT DEFAULT '',
+            factura_numero TEXT DEFAULT '',
+            factura_uuid TEXT DEFAULT '',
+            pagado_con_tarjeta INTEGER DEFAULT 0,
+            estado TEXT NOT NULL DEFAULT 'borrador',
+            notas TEXT DEFAULT '',
+            creado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS convenios_pagos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            convenio_id INTEGER NOT NULL,
+            numero INTEGER NOT NULL,
+            fecha TEXT NOT NULL,
+            importe REAL NOT NULL DEFAULT 0,
+            efectuado INTEGER NOT NULL DEFAULT 0,
+            fecha_pago TEXT DEFAULT '',
+            FOREIGN KEY (convenio_id) REFERENCES convenios(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS convenios_alertas_vistas (
+            convenio_id INTEGER NOT NULL,
+            fecha_vista TEXT NOT NULL,
+            PRIMARY KEY (convenio_id, fecha_vista)
+        )
+    """)
+
+    # --- Convenios: migración v1.1 (albarán/factura/tipo_pago por pago) ---
+    cols_pagos = {r[1] for r in conn.execute("PRAGMA table_info(convenios_pagos)")}
+    if "albaran" not in cols_pagos:
+        conn.execute("ALTER TABLE convenios_pagos ADD COLUMN albaran TEXT DEFAULT ''")
+    if "factura_numero" not in cols_pagos:
+        conn.execute("ALTER TABLE convenios_pagos ADD COLUMN factura_numero TEXT DEFAULT ''")
+    if "factura_uuid" not in cols_pagos:
+        conn.execute("ALTER TABLE convenios_pagos ADD COLUMN factura_uuid TEXT DEFAULT ''")
+    if "tipo_pago" not in cols_pagos:
+        conn.execute("ALTER TABLE convenios_pagos ADD COLUMN tipo_pago TEXT DEFAULT ''")
+    if "pagado_con_tarjeta" not in cols_pagos:
+        conn.execute("ALTER TABLE convenios_pagos ADD COLUMN pagado_con_tarjeta INTEGER DEFAULT 0")
+
     conn.commit()
     conn.close()
 

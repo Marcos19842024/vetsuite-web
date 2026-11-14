@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{{ conv.folio }} — Convenio de pagos</title>
+<style>
+  @page { size: letter; margin: 2.2cm 2.4cm; }
+  body { font-family: "Times New Roman", serif; font-size: 12pt; color: #000; line-height: 1.5; }
+  h1 { text-align: center; font-size: 16pt; margin: 0 0 1.5cm;
+       letter-spacing: 1px; text-transform: uppercase; }
+  .linea { border-bottom: 1px solid #000; padding: 0 .3em; font-weight: bold; }
+  .firma { margin-top: 3cm; display: flex; justify-content: space-between;
+           gap: 2cm; }
+  .firma div { flex: 1; text-align: center; font-size: 10pt; }
+  .firma .raya { border-top: 1px solid #000; margin-bottom: .4em;
+                 padding-top: 2.5cm; }
+  table.pagos { width: 100%; border-collapse: collapse; margin: 1cm 0; }
+  table.pagos th, table.pagos td { border: 1px solid #000;
+      padding: .4em .6em; text-align: center; font-size: 11pt; }
+  table.pagos th { background: #eee; }
+  .num { text-align: right; }
+  .no-print { margin: 1cm 0; text-align: center; }
+  .no-print button, .no-print a { padding: .5em 1em; font-size: 12pt;
+      margin: 0 .5em; cursor: pointer; }
+  .folio { text-align: right; font-size: 10pt; color: #555; margin-bottom: .5cm; }
+  .factura { font-size: 9pt; color: #555; margin-top: 1cm;
+             border-top: 1px dashed #999; padding-top: .5cm; }
+  @media print {
+    .no-print { display: none; }
+    .factura { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button onclick="window.print()">🖨 Imprimir</button>
+  <a href="/convenios">Volver al listado</a>
+  <a href="/convenios/{{ conv.id }}/editar">Editar</a>
+</div>
+
+<div class="folio">Folio: {{ conv.folio }}</div>
+
+<h1>Convenio de pagos</h1>
+
+<p>
+  {{ cfg.clinica.ciudad }}, a {{ fecha_legible(conv.fecha) }}.
+</p>
+
+<p>
+  Yo, <span class="linea">{{ conv.propietario }}</span>, siendo propietario
+  de la mascota llamada <span class="linea">{{ conv.mascota }}</span>
+  con NHC <span class="linea">{{ conv.nhc or '___________' }}</span>, en adelante seré el
+  <b>"PROPIETARIO"</b>.
+</p>
+
+<p>
+  Reconozco deber y pagar incondicionalmente a la orden del
+  {{ cfg.clinica.mvz }}, representante legal de la
+  "{{ cfg.clinica.nombre }}" con domicilio en {{ cfg.clinica.domicilio }},
+  en adelante referido como <b>"EL ACREEDOR"</b>, la cantidad de
+  <b>${{ "%.2f"|format(conv.monto_total) }}</b>.
+</p>
+
+<ol>
+  <li>
+    <b>IMPORTE:</b> ${{ "%.2f"|format(conv.monto_total) }} pesos
+    ({{ conv.monto_letra }}).
+  </li>
+  <li>
+    <b>VENCIMIENTO:</b> {{ fecha_legible(conv.fecha_vencimiento) }}.
+  </li>
+  <li>
+    <b>LUGAR DE PAGO:</b>
+    {% if conv.lugar_pago == 'recepcion' %}
+      recepción de la clínica.
+    {% elif conv.lugar_pago == 'transferencia' %}
+      vía transferencia bancaria a la cuenta
+      <b>{{ conv.cuenta_bancaria or cfg.clinica.cuenta_bancaria or '________________' }}</b>.
+    {% else %}
+      recepción de la clínica o vía transferencia bancaria a la cuenta
+      <b>{{ conv.cuenta_bancaria or cfg.clinica.cuenta_bancaria or '________________' }}</b>.
+    {% endif %}
+  </li>
+  <li>
+    <b>PLAN DE PAGOS:</b> la cuenta se divide en {{ pagos|length }} pagos,
+    conforme a la siguiente tabla:
+  </li>
+</ol>
+
+<table class="pagos">
+  <thead>
+    <tr>
+      <th style="width: 8%;"># Pago</th>
+      <th style="width: 22%;">Fecha</th>
+      <th style="width: 18%;">Importe</th>
+      <th style="width: 12%;">Efectuado</th>
+      <th style="width: 18%;">Factura</th>
+      <th style="width: 22%;">Tipo de pago</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in pagos %}
+    <tr>
+      <td>{{ p.numero }}</td>
+      <td>{{ fecha_legible(p.fecha) }}</td>
+      <td class="num">${{ "%.2f"|format(p.importe) }}</td>
+      <td>{{ "Sí" if p.efectuado else "" }}</td>
+      <td>{{ p.factura_numero or "" }}</td>
+      <td>{{ p.tipo_pago or "" }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <th colspan="2">TOTAL</th>
+      <th class="num">${{ "%.2f"|format(conv.monto_total) }}</th>
+      <th colspan="3"></th>
+    </tr>
+  </tbody>
+  <script>
+    // Auto-imprimir si viene con ?auto=1
+    if (new URLSearchParams(location.search).get('auto') === '1') {
+      window.addEventListener('load', () => setTimeout(() => window.print(), 300));
+    }
+  </script>
+</table>
+
+<p>
+  Lugar y fecha: {{ cfg.clinica.ciudad }}, a {{ fecha_legible(conv.fecha) }}.
+</p>
+
+<div class="firma">
+  <div>
+    <div class="raya"></div>
+    Firma y huella de EL TUTOR
+  </div>
+  <div>
+    <div class="raya"></div>
+    Firma del personal que autoriza el crédito
+  </div>
+</div>
+
+</body>
+</html>
