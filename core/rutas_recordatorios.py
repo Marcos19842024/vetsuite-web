@@ -21,6 +21,7 @@ CARPETA_REPORTES.mkdir(parents=True, exist_ok=True)
 HISTORIAL_FILE = CARPETA_DATOS / "historial_recordatorios.json"
 AGENDA_CACHE   = CARPETA_DATOS / "agenda_importada.json"
 VACUNAS_CACHE  = CARPETA_DATOS / "vacunas_importada.json"
+CONVENIOS_CACHE = CARPETA_DATOS / "convenios_importada.json"
 
 # Configuración del módulo (sucursal activa, nombre clínica, plantillas)
 from shared.rutas import RECORDATORIOS_CONFIG as CONFIG_FILE

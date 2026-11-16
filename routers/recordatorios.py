@@ -25,7 +25,7 @@ from openpyxl import Workbook, load_workbook
 from shared.templates_shared import templates
 
 from core.rutas_recordatorios import (
-    AGENDA_CACHE, VACUNAS_CACHE, CARPETA_REPORTES,
+    AGENDA_CACHE, CONVENIOS_CACHE, VACUNAS_CACHE, CARPETA_REPORTES,
     cargar_json, guardar_json,
 )
 from core.recordatorios.sucursales import (
@@ -34,7 +34,8 @@ from core.recordatorios.sucursales import (
 from core.recordatorios.procesar_excel import (
     procesar_excel, detectar_tipo_excel, regenerar_mensajes_cliente,
 )
-from core.recordatorios import historial, envio
+from core.recordatorios.convenios_generator import generar as generar_convenios
+from core.recordatorios import historial, envio, convenios_cache
 
 router = APIRouter(prefix="/recordatorios", tags=["recordatorios"])
 
@@ -138,10 +139,27 @@ async def index(request: Request):
         "vacunas_enviados": sum(1 for c in vacunas_rich if c["enviado"]),
     }
 
+    # Convenios
+    conv_data = convenios_cache.cargar()
+    convenios_rich = []
+    for idx, it in enumerate(conv_data.get("items", [])):
+        if it.get("descartado"):
+            continue
+        enviado = historial.ya_fue_enviado(it.get("telefono", ""), "convenios", it.get("mensaje", ""))
+        convenios_rich.append({
+            **it,
+            "idx": idx,
+            "enviado": enviado,
+            "wa_url": envio.construir_url_whatsapp(it.get("telefono", "")),
+        })
+    stats["convenios_total"] = len(convenios_rich)
+    stats["convenios_enviados"] = sum(1 for c in convenios_rich if c["enviado"])
+
     return templates.TemplateResponse("recordatorios.html", {
         "request": request,
         "citas": citas_rich,
         "vacunas": vacunas_rich,
+        "convenios": convenios_rich,     # <-- nueva
         "stats": stats,
         "sucursales": sucursales.get("sucursales", {}),
         "sucursal_activa_id": activa.get("id", ""),
@@ -316,7 +334,7 @@ async def exportar_excel():
 @router.post("/reset")
 async def reset():
     """Borra TODO lo del módulo: cachés, historial, reportes. NO toca otros módulos."""
-    for p in (AGENDA_CACHE, VACUNAS_CACHE):
+    for p in (AGENDA_CACHE, VACUNAS_CACHE, CONVENIOS_CACHE):
         try:
             if p.exists():
                 p.unlink()
@@ -348,3 +366,61 @@ async def reset():
 async def cambiar_sucursal(sucursal_id: str = Form(...)):
     guardar_sucursal_activa(sucursal_id)
     return RedirectResponse("/recordatorios", status_code=303)
+
+# ------------------------------------------------------------
+# Convenios: pestaña de recordatorios
+# ------------------------------------------------------------
+
+@router.post("/convenios/marcar/{idx}")
+async def convenios_marcar(idx: int):
+    data = convenios_cache.cargar()
+    items = data.get("items", [])
+    if not (0 <= idx < len(items)):
+        raise HTTPException(404, "Mensaje no encontrado")
+    it = items[idx]
+    historial.marcar_enviado(it.get("telefono", ""), "convenios", it.get("mensaje", ""), it.get("propietario", ""))
+    return JSONResponse({"ok": True})
+
+
+@router.post("/convenios/desmarcar/{idx}")
+async def convenios_desmarcar(idx: int):
+    data = convenios_cache.cargar()
+    items = data.get("items", [])
+    if not (0 <= idx < len(items)):
+        raise HTTPException(404, "Mensaje no encontrado")
+    it = items[idx]
+    historial.desmarcar_enviado(it.get("telefono", ""), "convenios")
+    return JSONResponse({"ok": True})
+
+
+@router.get("/convenios/whatsapp/{idx}")
+async def convenios_whatsapp(idx: int):
+    data = convenios_cache.cargar()
+    items = data.get("items", [])
+    if not (0 <= idx < len(items)):
+        raise HTTPException(404, "Mensaje no encontrado")
+    it = items[idx]
+    mensaje = it.get("mensaje", "")
+    url = envio.construir_url_whatsapp(it.get("telefono", ""), mensaje)
+    return JSONResponse({
+        "ok": True,
+        "url": url,
+        "mensaje": mensaje,
+        "nombre": it.get("propietario", ""),
+    })
+
+
+@router.post("/convenios/descartar/{idx}")
+async def convenios_descartar(idx: int):
+    if not convenios_cache.marcar_descartado(idx):
+        raise HTTPException(404, "Mensaje no encontrado")
+    return JSONResponse({"ok": True})
+
+
+@router.post("/convenios/regenerar")
+async def convenios_regenerar():
+    try:
+        resultado = generar_convenios()
+        return JSONResponse({"ok": True, **resultado})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

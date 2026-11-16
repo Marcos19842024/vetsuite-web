@@ -1,6 +1,7 @@
 """Helpers de Convenios: folio, búsqueda de ingreso, estado de pagos."""
 import datetime
 import json
+import hashlib
 
 from shared.db import get_conn
 from shared.rutas import CONVENIOS_ALERTAS_VISTAS
@@ -52,7 +53,7 @@ def buscar_ingreso_por_cliente(conn, nombre: str, rfc: str = ""):
     """
     if rfc:
         row = conn.execute(
-            "SELECT id, fecha, folio, rfc, total, datos_json "
+            "SELECT id, fecha, folio, folio_fiscal, rfc, total, datos_json "
             "FROM ingresos WHERE UPPER(TRIM(rfc)) = UPPER(TRIM(?)) "
             "ORDER BY fecha DESC LIMIT 1",
             (rfc,),
@@ -61,7 +62,7 @@ def buscar_ingreso_por_cliente(conn, nombre: str, rfc: str = ""):
             return _row_a_ingreso(row)
     if nombre:
         row = conn.execute(
-            "SELECT id, fecha, folio, rfc, total, datos_json "
+            "SELECT id, fecha, folio, folio_fiscal, rfc, total, datos_json "
             "FROM ingresos WHERE UPPER(TRIM(cliente)) = UPPER(TRIM(?)) "
             "ORDER BY fecha DESC LIMIT 1",
             (nombre,),
@@ -88,6 +89,7 @@ def _row_a_ingreso(row):
         "id": row["id"],
         "fecha": row["fecha"],
         "folio": row["folio"],
+        "folio_fiscal": row["folio_fiscal"] or "", 
         "rfc": row["rfc"] or "",
         "total": row["total"] or 0,
         "forma_pago": forma,
@@ -141,3 +143,36 @@ def calcular_estado_pago(conn, convenio_id: int) -> dict:
         "n_pagos": len(rows),
         "n_pagados": sum(1 for r in rows if r["efectuado"]),
     }
+
+
+def password_configurada() -> bool:
+    from shared.rutas import CONVENIOS_CONFIG
+    import json
+    try:
+        with open(CONVENIOS_CONFIG, encoding="utf-8") as f:
+            cfg = json.load(f)
+        return bool(cfg.get("seguridad", {}).get("password_hash"))
+    except Exception:
+        return False
+
+
+def verificar_password(password: str) -> bool:
+    from shared.rutas import CONVENIOS_CONFIG
+    import json
+    try:
+        with open(CONVENIOS_CONFIG, encoding="utf-8") as f:
+            cfg = json.load(f)
+        h = cfg.get("seguridad", {}).get("password_hash", "")
+        if not h:
+            return True  # sin contraseña configurada, todo permitido
+        return hashlib.sha256(password.encode()).hexdigest() == h
+    except Exception:
+        return False
+
+
+def convenio_tiene_pagos_efectuados(conn, convenio_id: int) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM convenios_pagos WHERE convenio_id=? AND efectuado=1 LIMIT 1",
+        (convenio_id,),
+    ).fetchone()
+    return row is not None

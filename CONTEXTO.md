@@ -79,6 +79,8 @@ Paquete shared/ — módulos transversales a todos los módulos:
 - templates_shared.py — Jinja2Templates compartido
 - uploads_manager.py — rutas de uploads de Ingresos (rechazados, sin_pdf, etc.)
 - campos.py — MESES_ES y otras constantes
+- jobs.py — gestor de jobs manuales (SAT, Gmail)
+- jobs_convenios.py — thread daemon del job diario de convenios
 
 Paquete ingresos/ — todo el pipeline de Ingresos:
 
@@ -120,6 +122,20 @@ Paquete core/:
   - parser.py — parseo de "Efectivo 24/10/26" para migración
   - semanas.py — wrapper de core/corte_semanal/semanas.py
 
+- core/recordatorios/
+  - __init__.py
+  - sucursales.py
+  - historial.py
+  - envio.py
+  - procesar_excel.py
+  - convenios_cache.py       # carga/guardado de convenios_importada.json
+  - convenios_generator.py   # lógica de generación de mensajes
+
+- convenios/
+  - __init__.py
+  - numero_a_letras.py — conversor de monto numérico a letra
+  - helpers.py — folio, búsqueda de factura, contraseña, alertas
+
 Paquete routers/:
 
 - ingresos.py — incluye /arbol, /catalogo, /ver-pdf, /ver-xml, /reclasificar-sucursales
@@ -154,6 +170,9 @@ Paquete templates/:
 - corte_semanal.html
 - servicios_externos.html
 - admin_ips.html
+- convenios.html
+- convenios_form.html
+- convenios_print.html
 
 Paquete static/:
 
@@ -180,6 +199,8 @@ Carpeta json/ — configuración y estado (NO va a git):
 - recordatorios_config.json
 - servicios_externos_config.json
 - solicitud_sat_activa.json (si existe)
+- convenios_config.json
+- convenios_alertas_vistas.json
 
 Carpeta uploads/ (NO va a git):
 
@@ -197,7 +218,14 @@ Carpeta uploads/ (NO va a git):
 - corte_semanal/<año>-W<semana> - Semanal Baalak-Prado <Mes>.xlsx — Excel cerrados
 - correos_procesados.json
 - logs/
+- uploads/recordatorios/
+  - agenda_importada.json
+  - vacunas_importada.json
+  - convenios_importada.json    # v0.9.x: mensajes de convenios
+  - historial_recordatorios.json
+  - reportes/
 
+- convenios.py — Convenios de Pago (captura + pagos + impresión + alertas)
 ---
 
 ## 4. Base de datos
@@ -393,6 +421,7 @@ escritorio.
 8. Reportes: modal con árbol Año → Mes → Semana → Concepto → Estado.
 9. Semana actual por defecto al abrir el módulo.
 
+- Convenios de Pago: completo (captura → pagos → impresión Carta → alertas de vencimiento → bloqueo con contraseña).
 ---
 
 ## 6. Modal de reportes (árbol jerárquico)
@@ -544,6 +573,121 @@ Registro continuo de servicios externos (incineraciones, hemogramas, etc.).
 - Ruta pública: /servicios_externos (guion bajo).
 - Módulo interno: "servicios_externos" en ip_permisos.json.
 
+---
+
+## 9.1 Recordatorios de Convenios (integración)
+
+El módulo de Recordatorios incluye una **tercera pestaña "Convenios"**
+que muestra los mensajes generados automáticamente para convenios
+vencidos o por vencer, y permite enviarlos por WhatsApp con el mismo
+flujo que Citas y Vacunas.
+
+### Generación
+
+- Un **job diario** (thread daemon en `shared/jobs_convenios.py`) corre
+  a la hora configurada en `json/convenios_config.json` →
+  `recordatorios.hora` (default `08:00`).
+- Si la app estaba apagada a esa hora, el job corre al arrancar (si ya
+  pasó la hora y no se generó hoy).
+- El job recorre los convenios con `estado NOT IN ('pagado', 'cancelado')`
+  y `fecha_vencimiento != ''`.
+- Calcula el saldo pendiente (`monto_total - suma de pagos efectuados`).
+  Si `pendiente <= 0.01`, lo salta.
+- Calcula `dias = fecha_vencimiento - hoy`:
+  - `dias < 0` → tipo `vencido`.
+  - `0 <= dias <= dias_por_vencer` → tipo `por_vencer`.
+  - `dias > dias_por_vencer` → no genera.
+- Genera el mensaje y lo inserta en `uploads/recordatorios/convenios_importada.json`
+  con un `id` único `conv-<cid>-<YYYY-MM-DD>` (evita duplicados del mismo día).
+- **No envía nada solo.** Solo prepara los mensajes. El envío es manual
+  desde la pestaña Convenios.
+
+### Mensajes
+
+**Vencido:**
+Hola {propietario}, le saludamos de Clínica Veterinaria Baalak.
+Le recordamos que tiene un convenio de pago pendiente por {mascota}
+con saldo de ${pendiente}, que venció el {fecha_vencimiento}.
+Le agradecemos pasar a recepción o comunicarse para regularizar.
+
+
+**Por vencer:**
+Hola {propietario}, le saludamos de Clínica Veterinaria Baalak.
+Le recordamos que tiene un convenio de pago pendiente por {mascota}
+con saldo de ${pendiente}, que vence el {fecha_vencimiento}.
+Le agradecemos pasar a recepción o comunicarse para regularizar.
+
+
+### Estructura del JSON (`convenios_importada.json`)
+
+    {
+      "generado_en": "2026-11-16T08:00:00",
+      "items": [
+        {
+          "id": "conv-2-2026-11-16",
+          "convenio_id": 2,
+          "folio": "CONV-2026-0001",
+          "tipo": "vencido",
+          "propietario": "...",
+          "mascota": "...",
+          "telefono": "...",
+          "monto_total": 3000.0,
+          "pagado": 0.0,
+          "pendiente": 3000.0,
+          "fecha_vencimiento": "2026-11-10",
+          "dias": 6,
+          "mensaje": "...",
+          "enviado": false,
+          "descartado": false,
+          "hash": "...",
+          "generado_en": "..."
+        }
+      ]
+    }
+
+### Endpoints nuevos en `/recordatorios`
+
+| Método | Ruta | Función |
+|---|---|---|
+| GET | `/recordatorios/convenios/whatsapp/{idx}` | URL + mensaje |
+| POST | `/recordatorios/convenios/marcar/{idx}` | Marca enviado |
+| POST | `/recordatorios/convenios/desmarcar/{idx}` | Desmarca |
+| POST | `/recordatorios/convenios/descartar/{idx}` | Descarta (no se regenera hoy) |
+| POST | `/recordatorios/convenios/regenerar` | Fuerza la generación manual |
+
+### Configuración
+
+En `json/convenios_config.json`:
+
+    {
+      "recordatorios": {
+        "activo": true,
+        "hora": "08:00",
+        "dias_por_vencer": 3
+      }
+    }
+
+- `activo`: si es `false`, el job no corre.
+- `hora`: hora local a la que corre el job (formato 24h).
+- `dias_por_vencer`: cuántos días antes del vencimiento se genera el
+  recordatorio (mismo parámetro que usan las alertas visuales).
+
+### Reglas de la integración
+
+1. **El job corre en un thread daemon**, separado del gestor
+   `shared/jobs.py` (que es para jobs manuales con progreso como SAT y
+   Gmail). No comparten estado.
+2. **Un mensaje por convenio por día.** El `id` con fecha lo garantiza.
+   Al día siguiente, si sigue vencido, se genera uno nuevo.
+3. **El `reset` de Recordatorios borra también `convenios_importada.json`**.
+4. **Los mensajes descartados no se regeneran hoy.** El `descartado: true`
+   se respeta hasta el día siguiente.
+5. **El historial de envíos** usa el mismo `historial_recordatorios.json`
+   con `tipo="convenios"`. `ya_fue_enviado` y `marcar_enviado` son
+   genéricos y funcionan sin cambios.
+6. **El botón único Enviar/Desmarcar** de la barra superior funciona
+   igual para las tres pestañas (Citas, Vacunas, Convenios), porque el
+   JS es genérico sobre `data-tipo` y `data-idx`.
 ---
 
 ## 10. Observaciones por celda en Corte Semanal (v0.8)
@@ -904,6 +1048,56 @@ v0.9.x: el árbol de reportes de Servicios Externos calcula la semana en Python 
 67. v0.9.x: si `X-GM-RAW` no está disponible (proveedor no Gmail),
     reintentar sin ese criterio y caer al comportamiento anterior
     (traer todo y filtrar en Python).
+68. v0.9.x: los Convenios de Pago NO llevan IVA (servicios médicos
+    veterinarios exentos, art. 41 Reglamento LIVA).
+69. v0.9.x: los pagos de convenio se guardan con upsert por `id`. Los
+    pagos efectuados nunca se modifican ni se eliminan desde el
+    formulario.
+70. v0.9.x: si un convenio tiene pagos efectuados, los cambios
+    estructurales (monto, fecha, propietario, mascota) se rechazan con
+    409 y requieren contraseña para desbloquear.
+71. v0.9.x: la impresión de convenios usa iframe oculto con `print()`.
+    Fallback a pestaña nueva si el navegador lo bloquea.
+72. v0.9.x: la celda de vencimiento del listado de convenios se pinta
+    rojo (vencido) o amarillo (por vencer), con los días de atraso o
+    restantes debajo de la fecha.
+73. v0.9.x: el job de recordatorios de convenios corre en un thread
+    daemon en `shared/jobs_convenios.py`, separado de `shared/jobs.py`
+    (que es para jobs manuales con progreso).
+74. v0.9.x: un mensaje de recordatorio por convenio por día. El `id`
+    `conv-<cid>-<YYYY-MM-DD>` lo garantiza. Al día siguiente se genera
+    uno nuevo si sigue vencido.
+75. v0.9.x: el job no envía nada solo. Solo prepara los mensajes. El
+    envío es manual desde la pestaña Convenios de Recordatorios.
+76. v0.9.x: el `reset` de Recordatorios borra también
+    `convenios_importada.json`.
+77. v0.9.x: los mensajes descartados (`descartado: true`) no se
+    regeneran el mismo día. Al día siguiente sí.
+78. v0.9.x: el historial de envíos de convenios usa
+    `historial_recordatorios.json` con `tipo="convenios"`. Es genérico,
+    no requiere cambios en `historial.py`.
+79. v0.9.x: si la app estaba apagada a la hora configurada, el job de
+    convenios corre al arrancar (si ya pasó la hora y no se generó hoy).
+80. v0.9.x: el listado de convenios tiene filtros híbridos: estado/fechas
+    server-side (query params), búsqueda por texto client-side (debounce
+    150ms). El `q` viaja en la URL como hidden.
+81. v0.9.x: el Excel de convenios (`/convenios/excel`) respeta los mismos
+    filtros que el listado. Dos hojas: Convenios y Pagos.
+82. v0.9.x: el UUID de factura se llena desde `ingresos.folio_fiscal` al
+    buscar la factura del cliente. Se guarda en
+    `convenios_pagos.factura_uuid` y se exporta en el Excel.
+83. v0.9.x: el botón eliminar de convenios vive dentro del formulario,
+    no en el listado. Solo aparece si está en borrador y sin pagos
+    efectuados.
+84. v0.9.x: la pestaña Convenios de Recordatorios tiene botones
+    "Regenerar" (fuerza la generación) y "Descartar" (marca como
+    descartado el seleccionado, no se regenera hoy). Solo visibles en
+    esa pestaña.
+85. v0.9.x: los `print()` de `sat/descarga.py` son avisos de progreso y
+    errores, no debug. No se borran.
+86. v0.9.x: múltiples `addEventListener('DOMContentLoaded', ...)` en el
+    mismo `<script>` son válidos y se acumulan. No se reemplazan entre
+    sí. Solo `element.onclick = fn` sobrescribe.
 
 ---
 
@@ -918,35 +1112,196 @@ NO van a git:
 ---
 
 ## 16. Pendientes
-
 - [ ] Tests automáticos del parser de Recordatorios.
 - [ ] Tests automáticos del pipeline de Ingresos y Egresos.
 - [ ] Tests automáticos del parser de expresiones del Corte (expr.py).
 - [ ] Tests automáticos del generador de Excel del Corte (excel_corte.py).
 - [ ] Tests automáticos del módulo Servicios Externos.
 - [ ] Tests automáticos del árbol de reportes de Corte Semanal.
-- [ ] Tests automáticos de la regeneración de observaciones (v0.8).
-- [ ] Tests automáticos del filtro de fechas de Gmail y del regex de serie (v0.9).
-- [ ] Documentación de instalación en Windows 11.
-- [ ] Arranque automático con el sistema (tarea programada).
-- [ ] Endpoint /egresos/zip con filtro por rango de fechas (hoy solo por mes).
-- [ ] Rotación de snapshots del SAT (borrar los de más de 6 meses).
-- [ ] Manejo de XMLs tipo E (notas de crédito) y P (complementos de pago).
-- [ ] Limpiar print() de debug en sat/descarga.py (líneas 142-146).
-- [ ] Revisar iicio.txt (archivo huérfano) y borrarlo.
-- [ ] Pruebas del usuario final en Ingresos, Egresos y Recordatorios.
-- [ ] Filtros en vivo (server-side con debounce) en Ingresos y Egresos
-      (evaluado y descartado por ahora; el modal de reportes cubre la
-      necesidad).
-- [ ] Validación más estricta al cerrar la semana del Corte (que las 7
-      fechas tengan datos o que los totales cuadren).
-- [ ] Exportar el Excel del Corte también como PDF.
-- [ ] Historial de cierres del Corte (lista de semanas cerradas).
+- [ ] Tests automáticos de la regeneración de observaciones.
+- [ ] Tests automáticos del filtro de fechas de Gmail y del regex de serie.
+- [ ] Tests automáticos del pre-filtro `X-GM-RAW` y del fallback.
+- [ ] Tests automáticos del conversor `numero_a_letras`.
+- [ ] Tests automáticos del job de convenios.
+- [ ] Reportes con árbol en Convenios (Año → Mes → Estado) — opcional.
 - [ ] Exportar a Excel desde Servicios Externos (opcional).
 - [ ] Historial de semanas cerradas en Servicios Externos.
-- [ ] Optimización del filtro de fechas de Gmail (pre-filtro IMAP grueso
-      o caché por headers) si el volumen de correos crece.
-- [ ] Tests automáticos del pre-filtro `X-GM-RAW` (bordes de
-      `after:`/`before:`) y del fallback.
-- [ ] Medir rendimiento de la descarga de Gmail con el pre-filtro
-      activo y comparar con el comportamiento anterior (todo el buzón).
+- [ ] Endpoint `/egresos/zip` con filtro por rango de fechas.
+- [ ] Rotación de snapshots del SAT (borrar los de más de 6 meses).
+- [ ] Manejo de XMLs tipo E (notas de crédito) y P (complementos de
+      pago) en Egresos.
+- [ ] Validación más estricta al cerrar la semana del Corte.
+- [ ] Historial de cierres del Corte (lista de semanas cerradas).
+
+---
+
+## 17. Convenios de Pago (/convenios)
+
+Módulo para generar convenios de pago (reconocimiento de deuda) con el
+cliente, imprimirlos en formato Carta y dar seguimiento a los pagos
+acordados. Reemplaza el llenado manual del formato en Word/PDF.
+
+### Modelo de datos
+
+**Tabla `convenios`:**
+
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    folio TEXT UNIQUE,                  -- CONV-<año>-<consecutivo 4 dígitos>
+    fecha TEXT NOT NULL,                -- fecha de firma
+    propietario TEXT NOT NULL,
+    telefono TEXT DEFAULT '',
+    direccion TEXT DEFAULT '',
+    mascota TEXT DEFAULT '',
+    nhc TEXT DEFAULT '',                -- Número de Historia Clínica
+    monto_total REAL NOT NULL DEFAULT 0,
+    monto_letra TEXT DEFAULT '',        -- generado con numero_a_letras()
+    fecha_vencimiento TEXT DEFAULT '',
+    lugar_pago TEXT DEFAULT 'recepcion',-- recepcion | transferencia | ambos
+    cuenta_bancaria TEXT DEFAULT '',    -- opcional, sobreescribe config
+    estado TEXT NOT NULL DEFAULT 'borrador', -- borrador | impreso | firmado | pagado | cancelado
+    notas TEXT DEFAULT '',
+    creado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+    actualizado_en TEXT DEFAULT CURRENT_TIMESTAMP
+
+**Tabla `convenios_pagos`:**
+
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    convenio_id INTEGER NOT NULL,
+    numero INTEGER NOT NULL,            -- 1, 2, 3...
+    fecha TEXT NOT NULL,
+    importe REAL NOT NULL DEFAULT 0,
+    efectuado INTEGER NOT NULL DEFAULT 0,
+    fecha_pago TEXT DEFAULT '',
+    albaran TEXT DEFAULT '',
+    factura_numero TEXT DEFAULT '',
+    factura_uuid TEXT DEFAULT '',
+    tipo_pago TEXT DEFAULT '',          -- Efectivo | Transferencia | Tarjeta de crédito | Tarjeta de débito | Otro
+    pagado_con_tarjeta INTEGER DEFAULT 0,
+    FOREIGN KEY (convenio_id) REFERENCES convenios(id) ON DELETE CASCADE
+
+**Tabla `convenios_alertas_vistas`:**
+
+    convenio_id INTEGER NOT NULL,
+    fecha_vista TEXT NOT NULL,          -- YYYY-MM-DD
+    PRIMARY KEY (convenio_id, fecha_vista)
+
+### Configuración (`json/convenios_config.json`)
+
+    {
+      "clinica": {
+        "nombre": "Clínica Veterinaria Baalak",
+        "mvz": "MVZ. Francisco Julián Gómez Cancino",
+        "domicilio": "Av. Central #33 Entre Colosio y Costa Rica",
+        "ciudad": "San Francisco de Campeche, Campeche",
+        "cuenta_bancaria": ""
+      },
+      "alertas": { "dias_por_vencer": 3 },
+      "seguridad": { "password_hash": "" }
+    }
+
+- `password_hash` vacío → modo abierto (no pide contraseña al desbloquear).
+- Para activarlo: `python -c "import hashlib; print(hashlib.sha256('TU_CONTRASEÑA'.encode()).hexdigest())"` y pegar el resultado.
+
+### IVA
+
+**Los convenios NO llevan IVA.** Las cirugías veterinarias son servicios
+médicos exentos de IVA en México (art. 41 del Reglamento de la Ley del
+IVA, aplicable a médicos veterinarios con título y cédula). El monto
+total del convenio es el precio del servicio, sin IVA trasladado.
+Si el convenio incluyera productos del mostrador, esos sí llevarían
+IVA, pero el módulo no hace ese desglose (no es el caso de uso).
+
+### Endpoints
+
+| Método | Ruta | Función |
+|---|---|---|
+| GET | `/convenios` | Listado + bandeja de alertas |
+| GET | `/convenios/nuevo` | Formulario de alta |
+| GET | `/convenios/{id}/editar` | Formulario de edición |
+| GET | `/convenios/{id}/imprimir` | Vista Carta para imprimir (iframe oculto) |
+| GET | `/convenios/numero-a-letras?monto=N` | Convierte monto a letra |
+| GET | `/convenios/buscar-cliente?q=&rfc=` | Busca factura del cliente en `ingresos` |
+| POST | `/convenios/guardar` | Crear/actualizar (JSON) |
+| POST | `/convenios/{id}/estado` | Cambiar estado |
+| POST | `/convenios/{id}/pago/{pid}/marcar` | Marcar pago efectuado |
+| POST | `/convenios/{id}/eliminar` | Eliminar (solo borrador sin pagos) |
+| POST | `/convenios/{id}/alerta-vista` | Marcar alerta como vista |
+| POST | `/convenios/verificar-password` | Validar contraseña de desbloqueo |
+| GET | `/convenios/excel` | Exportar a Excel (respeta filtros) |
+
+### Flujo
+
+1. `/convenios` → listado con bandeja de alertas de cobranza.
+2. Botón **+ Nuevo convenio** → formulario con:
+   - Datos del propietario (nombre, RFC, teléfono, dirección).
+   - Datos de la mascota (nombre, NHC).
+   - Monto total + monto en letra (auto).
+   - Fechas del convenio y de vencimiento.
+   - Lugar de pago + cuenta bancaria (opcional).
+   - **Plan de pagos dinámico**: N pagos, cada uno con fecha, importe,
+     efectuado, albarán, factura (con botón de búsqueda) y tipo de pago.
+3. Guardar → folio automático `CONV-2026-0001`.
+4. Botón 🖨 → carga el template en un iframe oculto y dispara
+   `window.print()`. El usuario no ve pestaña nueva.
+5. Doble clic en fila del listado → abre editar.
+6. Botón **Desbloquear** (solo si hay pagos efectuados) → pide contraseña,
+   desbloquea la edición de campos no bloqueados.
+
+### Reglas del módulo
+
+1. **El folio se genera automático**: `CONV-<año>-<consecutivo 4 dígitos>`.
+2. **Los pagos se guardan con upsert por `id`**:
+   - Si el pago viene con `id` y existe en BD, se actualiza (salvo que
+     esté efectuado).
+   - Si no viene `id`, se inserta.
+   - Si existía en BD y no vino en el payload, se elimina (solo si no
+     está efectuado).
+   - Los pagos efectuados **nunca se modifican ni se eliminan** desde
+     el formulario.
+3. **El botón 🗑 del listado** solo aparece si `estado == 'borrador'`
+   **y** no hay pagos efectuados.
+4. **Cambios estructurales bloqueados** cuando hay pagos efectuados:
+   monto total, fecha, propietario y mascota no se pueden modificar
+   (409). Requiere contraseña para desbloquear.
+5. **Contraseña opcional**: si `password_hash` está vacío, el desbloqueo
+   no pide contraseña. En producción debe estar configurada.
+6. **La búsqueda de factura** solo vincula facturas a nombre del cliente
+   (no público en general). Se busca por RFC primero, luego por nombre.
+7. **La detección de pago con tarjeta** se deriva del tipo de pago
+   (`Tarjeta de crédito` o `Tarjeta de débito` → `pagado_con_tarjeta=1`).
+8. **El IVA no se calcula** (servicios médicos veterinarios exentos).
+9. **La impresión** usa un iframe oculto con `print()`. Fallback a
+   pestaña nueva si el navegador lo bloquea.
+10. **El doble clic en fila** del listado abre editar. Los botones de
+    la fila tienen `event.stopPropagation()`.
+11. **La celda de vencimiento** se pinta: rojo (`celda-vencida`) si
+    vencido, amarillo (`celda-por-vencer`) si por vencer. Debajo de la
+    fecha se muestran los días de atraso o los días restantes.
+12. **La bandeja de alertas** de la parte superior muestra los convenios
+    vencidos y por vencer (según `dias_por_vencer` en config). Se puede
+    marcar como vista por día.
+13. **El módulo "convenios"** debe estar en `ip_permisos.json` (global y
+    por IP que lo necesite).
+14. **Filtros híbridos en el listado** (v0.9.x):
+    - Server-side: `estado`, `desde`, `hasta` (query params en la URL).
+    - Client-side: `q` (búsqueda por texto con debounce 150ms sobre las filas ya cargadas).
+    - El `q` viaja en la URL como hidden para preservarse al cambiar los filtros server-side.
+    - La URL es compartible: `/convenios?estado=borrador&desde=2026-11-01&hasta=2026-11-30&q=Francisco`.
+15. **Exportar a Excel** (v0.9.x):
+    - Endpoint: `GET /convenios/excel?estado=&desde=&hasta=&q=`.
+    - Respeta los mismos filtros que el listado (server-side + `q` en Python).
+    - Dos hojas: "Convenios" (una fila por convenio) y "Pagos" (una fila por pago).
+    - Formato de moneda en columnas de importe, encabezados azules, primera fila congelada.
+    - Nombre: `Convenios_YYYY-MM-DD_HHMM.xlsx`.
+16. **UUID de factura** (v0.9.x):
+    - Se llena automáticamente al hacer clic en 🔍 de una fila de pago.
+    - `buscar_ingreso_por_cliente()` devuelve `folio_fiscal` del ingreso.
+    - Se guarda en `convenios_pagos.factura_uuid`.
+    - Se muestra como texto pequeño debajo del número de factura.
+    - Se exporta en la hoja "Pagos" del Excel (columna "UUID factura").
+17. **Eliminar convenio** (v0.9.x):
+    - El botón 🗑 vive dentro del formulario (`convenios_form.html`), no en el listado.
+    - Solo aparece si `conv.estado == 'borrador'` y `not tiene_efectuados`.
+    - Pide confirmación con `confirm()`.
+    - Redirige al listado tras eliminar.
+    - El endpoint `POST /convenios/{cid}/eliminar` ya valida las reglas en backend.

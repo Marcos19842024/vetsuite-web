@@ -6,6 +6,7 @@ from pathlib import Path
 from shared.db import init_db
 from core import permisos_ip
 from shared.templates_shared import templates
+from shared.jobs_convenios import iniciar as iniciar_job_convenios
 from routers import (
     convenios, corte_semanal, ingresos, egresos, recordatorios, config_gmail, uploads, rechazados,
     admin_ips, servicios_externos
@@ -48,6 +49,7 @@ async def control_permisos_ip(request: Request, call_next):
 @app.on_event("startup")
 def startup():
     init_db()
+    iniciar_job_convenios()
 
 
 @app.middleware("http")

@@ -9,9 +9,12 @@ from core.convenios.helpers import (
     buscar_ingreso_por_cliente,
     calcular_estado_pago,
     cargar_alertas_vistas,
+    convenio_tiene_pagos_efectuados,
     fecha_legible,
     generar_folio,
     marcar_alerta_vista,
+    password_configurada,
+    verificar_password,
 )
 from core.convenios.numero_a_letras import numero_a_letras
 from shared.db import get_conn
@@ -26,7 +29,7 @@ def _cfg() -> dict:
         with open(CONVENIOS_CONFIG, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"clinica": {}, "alertas": {"dias_por_vencer": 3}}
+        return {"clinica": {}, "alertas": {"dias_por_vencer": 3}, "seguridad": {}}
 
 
 @router.get("/numero-a-letras")
@@ -37,11 +40,34 @@ def numero_a_letras_endpoint(monto: float = 0):
 # ---------- Listado ----------
 
 @router.get("", response_class=HTMLResponse)
-def listado(request: Request):
+def listado(
+    request: Request,
+    estado: str = "",
+    desde: str = "",
+    hasta: str = "",
+    q: str = "",
+):
     conn = get_conn()
-    rows = conn.execute(
-        "SELECT * FROM convenios ORDER BY fecha DESC, id DESC"
-    ).fetchall()
+
+    # Filtros server-side: estado y rango de fechas
+    where = []
+    params = []
+    if estado and estado in ("borrador", "impreso", "firmado", "pagado", "cancelado"):
+        where.append("estado = ?")
+        params.append(estado)
+    if desde:
+        where.append("fecha >= ?")
+        params.append(desde)
+    if hasta:
+        where.append("fecha <= ?")
+        params.append(hasta)
+
+    sql = "SELECT * FROM convenios"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY fecha DESC, id DESC"
+
+    rows = conn.execute(sql, params).fetchall()
     convenios = []
     vistas = cargar_alertas_vistas()
     hoy = datetime.date.today()
@@ -51,7 +77,7 @@ def listado(request: Request):
         est = calcular_estado_pago(conn, r["id"])
         item = dict(r)
         item.update(est)
-        # Calcular estado de alerta
+        item["tiene_efectuados"] = est["n_pagados"] > 0
         alerta = None
         if r["estado"] not in ("pagado", "cancelado") and r["fecha_vencimiento"]:
             try:
@@ -75,6 +101,7 @@ def listado(request: Request):
             "convenios": convenios,
             "alertas": alertas,
             "cfg": _cfg(),
+            "filtros": {"estado": estado, "desde": desde, "hasta": hasta, "q": q},
         },
     )
 
@@ -85,7 +112,14 @@ def listado(request: Request):
 def nuevo(request: Request):
     return templates.TemplateResponse(
         "convenios_form.html",
-        {"request": request, "conv": None, "pagos": [], "cfg": _cfg()},
+        {
+            "request": request,
+            "conv": None,
+            "pagos": [],
+            "cfg": _cfg(),
+            "tiene_efectuados": False,
+            "password_configurada": password_configurada(),
+        },
     )
 
 
@@ -97,15 +131,21 @@ def editar(cid: int, request: Request):
         "SELECT * FROM convenios_pagos WHERE convenio_id=? ORDER BY numero",
         (cid,),
     ).fetchall()
+    tiene_efectuados = convenio_tiene_pagos_efectuados(conn, cid)
     conn.close()
     if not conv:
         return HTMLResponse("Convenio no encontrado", status_code=404)
-    # Convertir a dict para que Jinja2 pueda serializar con tojson
-    conv = dict(conv)
     pagos = [dict(p) for p in pagos_rows]
     return templates.TemplateResponse(
         "convenios_form.html",
-        {"request": request, "conv": conv, "pagos": pagos, "cfg": _cfg()},
+        {
+            "request": request,
+            "conv": conv,
+            "pagos": pagos,
+            "cfg": _cfg(),
+            "tiene_efectuados": tiene_efectuados,
+            "password_configurada": password_configurada(),
+        },
     )
 
 
@@ -125,10 +165,13 @@ def buscar_cliente(q: str = "", rfc: str = ""):
 async def guardar(request: Request):
     data = await request.json()
     conn = get_conn()
+    cid = data.get("id")
+
     total = float(data.get("monto_total") or 0)
     letra = data.get("monto_letra") or numero_a_letras(total)
     pagos = data.get("pagos") or []
     suma_pagos = sum(float(p.get("importe") or 0) for p in pagos)
+
     if pagos and abs(suma_pagos - total) > 0.01:
         conn.close()
         return JSONResponse(
@@ -136,19 +179,30 @@ async def guardar(request: Request):
             status_code=400,
         )
 
-    # Vinculación con factura
-    ingreso = None
-    if data.get("rfc") or data.get("propietario"):
-        ingreso = buscar_ingreso_por_cliente(
-            conn, data.get("propietario", ""), data.get("rfc", "")
-        )
-    ingreso_id = data.get("ingreso_id") or (ingreso["id"] if ingreso else None)
-    pagado_con_tarjeta = data.get("pagado_con_tarjeta")
-    if pagado_con_tarjeta is None and ingreso:
-        pagado_con_tarjeta = ingreso["pagado_con_tarjeta"]
-    pagado_con_tarjeta = 1 if pagado_con_tarjeta else 0
+    # --- Verificación de seguridad si ya hay pagos efectuados ---
+    if cid and convenio_tiene_pagos_efectuados(conn, cid):
+        if password_configurada() and not verificar_password(data.get("password", "")):
+            conn.close()
+            return JSONResponse(
+                {"ok": False, "error": "Se requiere contraseña para modificar un convenio con pagos efectuados."},
+                status_code=401,
+            )
+        conv_actual = conn.execute(
+            "SELECT monto_total, fecha, propietario, mascota FROM convenios WHERE id=?",
+            (cid,),
+        ).fetchone()
+        if conv_actual:
+            if (abs(float(data.get("monto_total") or 0) - float(conv_actual["monto_total"])) > 0.01 or
+                data.get("fecha") != conv_actual["fecha"] or
+                data.get("propietario") != conv_actual["propietario"] or
+                data.get("mascota") != conv_actual["mascota"]):
+                conn.close()
+                return JSONResponse(
+                    {"ok": False, "error": "No puedes modificar monto, fecha, propietario ni mascota cuando hay pagos efectuados."},
+                    status_code=409,
+                )
 
-    cid = data.get("id")
+    # --- Datos del convenio ---
     campos = (
         data.get("fecha", datetime.date.today().isoformat()),
         data.get("propietario", ""),
@@ -172,7 +226,6 @@ async def guardar(request: Request):
                WHERE id=?""",
             campos + (cid,),
         )
-        conn.execute("DELETE FROM convenios_pagos WHERE convenio_id=?", (cid,))
     else:
         folio = generar_folio(conn)
         cur = conn.execute(
@@ -185,25 +238,59 @@ async def guardar(request: Request):
         )
         cid = cur.lastrowid
 
-        for i, p in enumerate(pagos, 1):
+    # --- Upsert de pagos (respeta los efectuados) ---
+    pagos_existentes = {
+        r["id"]: dict(r)
+        for r in conn.execute(
+            "SELECT * FROM convenios_pagos WHERE convenio_id=?", (cid,)
+        ).fetchall()
+    }
+
+    ids_enviados = set()
+    for i, p in enumerate(pagos, 1):
+        pid = p.get("id")
+        if pid and pid in pagos_existentes:
+            ids_enviados.add(pid)
+            existente = pagos_existentes[pid]
+            if existente["efectuado"]:
+                # No se toca un pago efectuado
+                continue
             conn.execute(
-                """INSERT INTO convenios_pagos
-                (convenio_id, numero, fecha, importe, efectuado, fecha_pago,
-                    albaran, factura_numero, factura_uuid, tipo_pago, pagado_con_tarjeta)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                """UPDATE convenios_pagos SET numero=?, fecha=?, importe=?,
+                   efectuado=?, fecha_pago=?, albaran=?, factura_numero=?,
+                   factura_uuid=?, tipo_pago=?, pagado_con_tarjeta=?
+                   WHERE id=?""",
                 (
-                    cid, i,
-                    p.get("fecha", ""),
-                    float(p.get("importe") or 0),
+                    i, p.get("fecha", ""), float(p.get("importe") or 0),
                     1 if p.get("efectuado") else 0,
                     p.get("fecha_pago", "") if p.get("efectuado") else "",
-                    p.get("albaran", ""),
-                    p.get("factura_numero", ""),
-                    p.get("factura_uuid", ""),
-                    p.get("tipo_pago", ""),
+                    p.get("albaran", ""), p.get("factura_numero", ""),
+                    p.get("factura_uuid", ""), p.get("tipo_pago", ""),
+                    1 if p.get("pagado_con_tarjeta") else 0,
+                    pid,
+                ),
+            )
+        else:
+            cur = conn.execute(
+                """INSERT INTO convenios_pagos
+                   (convenio_id, numero, fecha, importe, efectuado, fecha_pago,
+                    albaran, factura_numero, factura_uuid, tipo_pago, pagado_con_tarjeta)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    cid, i, p.get("fecha", ""), float(p.get("importe") or 0),
+                    1 if p.get("efectuado") else 0,
+                    p.get("fecha_pago", "") if p.get("efectuado") else "",
+                    p.get("albaran", ""), p.get("factura_numero", ""),
+                    p.get("factura_uuid", ""), p.get("tipo_pago", ""),
                     1 if p.get("pagado_con_tarjeta") else 0,
                 ),
             )
+            ids_enviados.add(cur.lastrowid)
+
+    # Borrar los que ya no vienen en el payload (solo si no están efectuados)
+    for pid, p in pagos_existentes.items():
+        if pid not in ids_enviados and not p["efectuado"]:
+            conn.execute("DELETE FROM convenios_pagos WHERE id=?", (pid,))
 
     conn.commit()
     conn.close()
@@ -216,15 +303,13 @@ async def guardar(request: Request):
 def imprimir(cid: int, request: Request):
     conn = get_conn()
     conv = conn.execute("SELECT * FROM convenios WHERE id=?", (cid,)).fetchone()
-    pagos_rows = conn.execute(
+    pagos = conn.execute(
         "SELECT * FROM convenios_pagos WHERE convenio_id=? ORDER BY numero",
         (cid,),
     ).fetchall()
     conn.close()
     if not conv:
         return HTMLResponse("Convenio no encontrado", status_code=404)
-    conv = dict(conv)
-    pagos = [dict(p) for p in pagos_rows]
     return templates.TemplateResponse(
         "convenios_print.html",
         {
@@ -270,7 +355,6 @@ async def marcar_pago(cid: int, pid: int, request: Request):
         ),
     )
     conn.commit()
-    # Recalcular estado del convenio
     est = calcular_estado_pago(conn, cid)
     if est["pendiente"] <= 0.01 and est["n_pagos"] > 0:
         conn.execute(
@@ -289,6 +373,12 @@ async def eliminar(cid: int):
     if not conv:
         conn.close()
         return JSONResponse({"ok": False, "error": "No encontrado"}, status_code=404)
+    if convenio_tiene_pagos_efectuados(conn, cid):
+        conn.close()
+        return JSONResponse(
+            {"ok": False, "error": "No se puede eliminar un convenio con pagos efectuados."},
+            status_code=409,
+        )
     if conv["estado"] != "borrador":
         conn.close()
         return JSONResponse(
@@ -302,7 +392,163 @@ async def eliminar(cid: int):
     return JSONResponse({"ok": True})
 
 
+# ---------- Exportar Excel ----------
+
+@router.get("/excel")
+def exportar_excel(
+    estado: str = "",
+    desde: str = "",
+    hasta: str = "",
+    q: str = "",
+):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from fastapi.responses import StreamingResponse
+    import io
+    from datetime import datetime
+
+    conn = get_conn()
+
+    # Mismos filtros que el listado
+    where = []
+    params = []
+    if estado and estado in ("borrador", "impreso", "firmado", "pagado", "cancelado"):
+        where.append("estado = ?")
+        params.append(estado)
+    if desde:
+        where.append("fecha >= ?")
+        params.append(desde)
+    if hasta:
+        where.append("fecha <= ?")
+        params.append(hasta)
+
+    sql = "SELECT * FROM convenios"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY fecha DESC, id DESC"
+
+    rows = conn.execute(sql, params).fetchall()
+
+    # Filtro por texto (client-side en el listado, aquí lo aplicamos en Python)
+    if q:
+        ql = q.lower().strip()
+        rows = [
+            r for r in rows
+            if any(ql in (str(r[c] or "")).lower() for c in
+                   ("folio", "propietario", "mascota", "nhc", "telefono", "notas"))
+        ]
+
+    wb = Workbook()
+
+    # Hoja 1: Convenios
+    ws = wb.active
+    assert ws is not None
+    ws.title = "Convenios"
+
+    headers = ["Folio", "Fecha", "Propietario", "Teléfono", "Mascota", "NHC",
+               "Monto total", "Pagado", "Pendiente", "Vencimiento",
+               "Estado", "Lugar de pago", "Notas"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="206BC4")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for r in rows:
+        est = calcular_estado_pago(conn, r["id"])
+        ws.append([
+            r["folio"] or "",
+            r["fecha"] or "",
+            r["propietario"] or "",
+            r["telefono"] or "",
+            r["mascota"] or "",
+            r["nhc"] or "",
+            float(r["monto_total"] or 0),
+            est["pagado"],
+            est["pendiente"],
+            r["fecha_vencimiento"] or "",
+            r["estado"] or "",
+            r["lugar_pago"] or "",
+            r["notas"] or "",
+        ])
+
+    # Formato de moneda
+    for row in ws.iter_rows(min_row=2, min_col=7, max_col=9):
+        for cell in row:
+            cell.number_format = '"$"#,##0.00'
+
+    # Anchos de columna
+    anchos = [14, 12, 30, 14, 18, 10, 14, 14, 14, 14, 12, 16, 30]
+    for i, w in enumerate(anchos, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    ws.freeze_panes = "A2"
+
+    # Hoja 2: Pagos
+    ws2 = wb.create_sheet("Pagos")
+    headers2 = ["Folio", "Propietario", "# Pago", "Fecha", "Importe",
+                "Efectuado", "Fecha de pago", "Albarán", "Factura",
+                "UUID factura", "Tipo de pago"]
+    ws2.append(headers2)
+    for cell in ws2[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="206BC4")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for r in rows:
+        pagos = conn.execute(
+            "SELECT * FROM convenios_pagos WHERE convenio_id=? ORDER BY numero",
+            (r["id"],),
+        ).fetchall()
+        for p in pagos:
+            ws2.append([
+                r["folio"] or "",
+                r["propietario"] or "",
+                p["numero"],
+                p["fecha"] or "",
+                float(p["importe"] or 0),
+                "Sí" if p["efectuado"] else "No",
+                p["fecha_pago"] or "",
+                p["albaran"] or "",
+                p["factura_numero"] or "",
+                p["factura_uuid"] or "",
+                p["tipo_pago"] or "",
+            ])
+
+    for row in ws2.iter_rows(min_row=2, min_col=5, max_col=5):
+        for cell in row:
+            cell.number_format = '"$"#,##0.00'
+
+    anchos2 = [14, 30, 8, 12, 14, 10, 14, 14, 16, 38, 18]
+    for i, w in enumerate(anchos2, 1):
+        ws2.column_dimensions[chr(64 + i)].width = w
+
+    ws2.freeze_panes = "A2"
+
+    conn.close()
+
+    # Guardar en memoria
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"Convenios_{datetime.now().strftime('%Y-%m-%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/{cid}/alerta-vista")
 async def alerta_vista(cid: int):
     marcar_alerta_vista(cid)
     return JSONResponse({"ok": True})
+
+
+@router.post("/verificar-password")
+async def verificar_password_endpoint(request: Request):
+    data = await request.json()
+    if verificar_password(data.get("password", "")):
+        return JSONResponse({"ok": True})
+    return JSONResponse({"ok": False, "error": "Contraseña incorrecta."}, status_code=401)

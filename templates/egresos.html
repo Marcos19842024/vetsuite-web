@@ -5,14 +5,17 @@
 <div class="page-header mb-3">
     <div class="row align-items-center">
         <div class="col">
-            <h2 class="page-title">Egresos</h2>
+            <h2 class="page-title">
+                Egresos
+                {% if resumen %}
+                    <span class="text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
+                        {{ resumen }}.
+                    </span>
+                {% endif %}
+            </h2>
         </div>
     </div>
 </div>
-
-{% if resumen %}
-<div class="alert alert-success mb-3">{{ resumen }}</div>
-{% endif %}
 
 <!-- Barra de herramientas -->
 <div class="card mb-3">
@@ -77,15 +80,15 @@
         <form method="get" action="/egresos" class="row g-2 align-items-end">
             <div class="col-md-2">
                 <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Desde</label>
-                <input type="date" class="form-control form-control-sm" name="desde" value="{{ filtros.desde }}">
+                <input type="date" class="form-control form-control-sm" name="desde" value="{{ filtros.desde }}" onchange="this.form.submit()">
             </div>
             <div class="col-md-2">
                 <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Hasta</label>
-                <input type="date" class="form-control form-control-sm" name="hasta" value="{{ filtros.hasta }}">
+                <input type="date" class="form-control form-control-sm" name="hasta" value="{{ filtros.hasta }}" onchange="this.form.submit()">
             </div>
             <div class="col-md-2">
                 <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Sucursal</label>
-                <select class="form-select form-select-sm" name="sucursal">
+                <select class="form-select form-select-sm" name="sucursal" onchange="this.form.submit()">
                     <option value="">Todas</option>
                     {% for s in sucursales %}
                     <option value="{{ s }}" {% if s == filtros.sucursal %}selected{% endif %}>{{ s }}</option>
@@ -94,7 +97,7 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Método</label>
-                <select class="form-select form-select-sm" name="metodo">
+                <select class="form-select form-select-sm" name="metodo" onchange="this.form.submit()">
                     <option value="">Todos</option>
                     <option value="PUE" {% if filtros.metodo == 'PUE' %}selected{% endif %}>PUE</option>
                     <option value="PPD" {% if filtros.metodo == 'PPD' %}selected{% endif %}>PPD</option>
@@ -102,7 +105,7 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Forma</label>
-                <select class="form-select form-select-sm" name="forma">
+                <select class="form-select form-select-sm" name="forma" onchange="this.form.submit()">
                     <option value="">Todas</option>
                     <option value="Efectivo" {% if filtros.forma == 'Efectivo' %}selected{% endif %}>Efectivo</option>
                     <option value="TC" {% if filtros.forma == 'TC' %}selected{% endif %}>TC</option>
@@ -111,11 +114,6 @@
                 </select>
             </div>
             <div class="col-auto ms-auto">
-                <button
-                    type="submit"
-                    class="btn btn-outline-primary btn-sm">
-                    <i class="ti ti-search me-1" style="font-size: 1.15rem;"></i> Filtrar
-                </button>
                 <a href="/egresos" class="btn btn-outline-secondary btn-sm">Limpiar</a>
             </div>
         </form>

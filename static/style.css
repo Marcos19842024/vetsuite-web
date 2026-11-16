@@ -992,3 +992,13 @@ textarea.corte-obs {
   border-radius: .25rem;
   font-size: .72rem;
 }
+
+.convenios-form .pagos-tabla tr.fila-bloqueada {
+  background-color: #f8f9fa;
+  opacity: .85;
+}
+.convenios-form .pagos-tabla tr.fila-bloqueada input,
+.convenios-form .pagos-tabla tr.fila-bloqueada select {
+  background-color: #e9ecef;
+  cursor: not-allowed;
+}

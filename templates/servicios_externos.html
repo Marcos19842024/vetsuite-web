@@ -19,46 +19,27 @@
 <!-- Barra de herramientas -->
 <div class="card mb-3">
   <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
-
-    {# Izquierda: botón principal + acciones #}
     <div class="btn-list">
       {# Cerrar semana (solo si abierta) #}
       <button type="button" class="btn btn-sm btn-outline-primary" id="btn-cerrar-semana">
         🔒 Cerrar semana
       </button>
-
       {# Reabrir semana (solo si cerrada) #}
       <button type="button" class="btn btn-sm btn-outline-primary" id="btn-reabrir-semana" style="display:none;">
         🔓 Reabrir semana
       </button>
-
       <button
         type="button" class="btn btn-outline-secondary btn-sm"
         onclick="abrirModalReportes()">
         <i class="ti ti-list me-1" style="font-size: 1.15rem;"></i> Ver registros
       </button>
+    </div>
 
-      <span class="vr mx-2"></span>
-
+    <div class="ms-auto btn-list">
       <button type="button" class="btn btn-outline-primary btn-sm" id="btn-nuevo">
         + Nuevo servicio
       </button>
     </div>
-
-    {# Derecha: navegación de semanas #}
-    <div class="ms-auto btn-list">
-      <div class="d-flex align-items-center gap-2">
-        <button type="button" class="btn btn-sm btn-ghost-secondary" id="btn-semana-prev">
-          <i class="ti ti-arrow-left" style="font-size: 1.15rem;"></i>
-        </button>
-        <input type="week" id="f-semana" class="form-control form-control-sm"
-               style="width:180px">
-        <button type="button" class="btn btn-sm btn-ghost-secondary" id="btn-semana-next">
-          <i class="ti ti-arrow-right" style="font-size: 1.15rem;"></i>
-        </button>
-      </div>
-    </div>
-
   </div>
 </div>
 
@@ -66,8 +47,8 @@
 <div class="card mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label mb-1">Concepto</label>
+      <div class="col-md-2">
+        <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Concepto</label>
         <select id="f-concepto" class="form-select form-select-sm">
           <option value="">Todos</option>
           {% for c in cfg.conceptos %}
@@ -76,13 +57,26 @@
         </select>
       </div>
 
-      <div class="col-md-3">
-        <label class="form-label mb-1">Estado</label>
+      <div class="col-md-2">
+        <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Estado</label>
         <select id="f-estado" class="form-select form-select-sm">
           <option value="">Todos</option>
           <option value="pendiente">Pendientes</option>
           <option value="pagado">Pagados</option>
         </select>
+      </div>
+
+      <div class="col-md-2">
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-ghost-secondary" id="btn-semana-prev">
+            <i class="ti ti-arrow-left" style="font-size: 1.15rem;"></i>
+          </button>
+          <input type="week" id="f-semana" class="form-control form-control-sm"
+                style="width:180px">
+          <button type="button" class="btn btn-sm btn-ghost-secondary" id="btn-semana-next">
+            <i class="ti ti-arrow-right" style="font-size: 1.15rem;"></i>
+          </button>
+        </div>
       </div>
 
       <div class="col-auto ms-auto">

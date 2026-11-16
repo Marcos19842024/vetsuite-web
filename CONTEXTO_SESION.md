@@ -1,3 +1,456 @@
+# Sesión de trabajo — 2026-11-16 (VetSuite Web v0.9.x — cierre de Convenios)
+
+## Resumen
+
+Sesión de cierre del módulo **Convenios de Pago**. Se completaron los
+pendientes que quedaban de la sesión anterior: filtros híbridos en el
+listado, exportar a Excel, UUID de factura desde Ingresos, eliminación
+condicionada desde el formulario, botones Regenerar/Descartar en la
+pestaña Convenios de Recordatorios, y limpieza de pendientes globales.
+
+Se completó:
+- Filtros híbridos en `/convenios` (estado/fechas server-side, texto
+  client-side).
+- Endpoint `GET /convenios/excel` con dos hojas (Convenios y Pagos).
+- UUID de factura automático desde `ingresos.folio_fiscal`.
+- Botón Eliminar dentro del formulario, condicionado a borrador sin
+  pagos efectuados.
+- Botones Regenerar/Descartar en la pestaña Convenios de Recordatorios.
+- Limpieza de pendientes: `print()` de `sat/descarga.py` no aplica
+  (son avisos, no debug); `iicio.txt` borrado.
+
+## Qué se hizo
+
+### 1. Filtros híbridos en el listado
+
+- `listado()` acepta query params `estado`, `desde`, `hasta`, `q`.
+- `estado`, `desde`, `hasta` se aplican en SQL (server-side).
+- `q` se aplica en el cliente con debounce 150ms sobre las filas ya
+  cargadas.
+- El `q` viaja en la URL como hidden para preservarse al cambiar los
+  filtros server-side.
+- La URL es compartible.
+
+### 2. Exportar a Excel
+
+- Endpoint `GET /convenios/excel?estado=&desde=&hasta=&q=`.
+- Respeta los mismos filtros que el listado.
+- Dos hojas:
+  - "Convenios": folio, fecha, propietario, teléfono, mascota, NHC,
+    monto total, pagado, pendiente, vencimiento, estado, lugar de pago,
+    notas.
+  - "Pagos": folio del convenio, propietario, # pago, fecha, importe,
+    efectuado, fecha de pago, albarán, factura, UUID, tipo de pago.
+- Formato de moneda, encabezados azules, primera fila congelada,
+  anchos de columna predefinidos.
+- Nombre: `Convenios_YYYY-MM-DD_HHMM.xlsx`.
+
+### 3. UUID de factura
+
+- `buscar_ingreso_por_cliente()` devuelve `folio_fiscal` del ingreso.
+- El JS de `buscarFacturaFila(tr)` llena el hidden `.pago-factura-uuid`
+  con `ing.folio_fiscal`.
+- Se guarda en `convenios_pagos.factura_uuid`.
+- Se muestra como texto pequeño debajo del número de factura.
+- Se exporta en la hoja "Pagos" del Excel.
+
+### 4. Eliminar convenio desde el formulario
+
+- El botón 🗑 se movió del listado al formulario.
+- Solo aparece si `conv.estado == 'borrador'` y `not tiene_efectuados`.
+- Pide confirmación con `confirm()`.
+- Llama a `POST /convenios/{cid}/eliminar` y redirige al listado.
+- El listado ya no tiene botón eliminar; la eliminación es exclusiva
+  del formulario.
+
+### 5. Botones Regenerar/Descartar en pestaña Convenios
+
+- "Regenerar" llama a `POST /recordatorios/convenios/regenerar` y
+  muestra un alert con el resultado.
+- "Descartar" llama a `POST /recordatorios/convenios/descartar/{idx}`
+  del item seleccionado. Solo se habilita si el item no está enviado.
+- Ambos botones solo son visibles en la pestaña Convenios de
+  Recordatorios. Se ocultan (junto con el separador) al cambiar a
+  Citas o Vacunas.
+
+### 6. Limpieza de pendientes
+
+- Los `print()` de `sat/descarga.py` son avisos de progreso y errores,
+  no debug. No se borran.
+- `iicio.txt` ya no existía; se eliminó la línea de pendientes del
+  contexto.
+
+## Bugs resueltos en esta sesión
+
+- **`factura_uuid` no se llenaba**: `buscar_ingreso_por_cliente()` no
+  devolvía `folio_fiscal`. Fix: agregar `folio_fiscal` al SELECT y al
+  dict de retorno.
+- **Múltiples `DOMContentLoaded`**: se aclaró que son válidos y se
+  acumulan. No se reemplazan entre sí.
+
+## Estado actual
+
+### Funcional
+- ✅ Módulo Convenios de Pago completo (captura, impresión, alertas,
+  bloqueo, eliminación, filtros, Excel, UUID).
+- ✅ Recordatorios de convenios (job diario 08:00 + pestaña Convenios
+  con botones Regenerar/Descartar).
+- ✅ Todos los módulos anteriores siguen funcionando.
+
+### Pendiente (Convenios)
+- 📝 Reportes con árbol (Año → Mes → Estado) — opcional, consistencia
+  visual con los demás módulos.
+
+### Pendiente (global, arrastrado)
+- 🧪 Tests automáticos (el más grande, requiere sesión dedicada).
+- ⏰ Arranque automático con el sistema en macOS (ya implementado por
+  el usuario con `launchd`).
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Probar Convenios: `http://127.0.0.1:8000/convenios`
+- Probar Recordatorios: `http://127.0.0.1:8000/recordatorios`
+- Exportar Excel: clic en "Exportar Excel" en `/convenios` (respeta
+  filtros).
+- Forzar generación de recordatorios sin esperar al job:
+  `curl -X POST http://127.0.0.1:8000/recordatorios/convenios/regenerar`
+
+## Reglas nuevas (cierre de Convenios)
+
+1. Filtros híbridos: estado/fechas server-side, texto client-side con
+   debounce. El `q` viaja en la URL como hidden.
+2. El Excel de convenios respeta los mismos filtros que el listado.
+3. El UUID de factura se llena desde `ingresos.folio_fiscal` al buscar
+   la factura del cliente.
+4. El botón eliminar vive dentro del formulario, no en el listado.
+5. Los botones Regenerar/Descartar solo son visibles en la pestaña
+   Convenios de Recordatorios.
+6. Los `print()` de `sat/descarga.py` son avisos de progreso, no debug.
+7. Múltiples `DOMContentLoaded` en el mismo `<script>` se acumulan, no
+   se reemplazan.
+
+# Sesión de trabajo — 2026-11-15 (VetSuite Web v0.9.x — recordatorios automáticos de convenios)
+
+## Resumen
+
+Se cerró el ciclo del módulo **Convenios de Pago** integrando la
+generación automática de recordatorios por WhatsApp. Un thread daemon
+corre una vez al día a la hora configurada, revisa los convenios
+vencidos o por vencer con saldo pendiente, y deja los mensajes listos
+en una tercera pestaña "Convenios" del módulo de Recordatorios.
+
+Se completó:
+- `core/recordatorios/convenios_cache.py` — carga/guardado del JSON.
+- `core/recordatorios/convenios_generator.py` — lógica de generación.
+- `shared/jobs_convenios.py` — thread daemon con scheduler diario.
+- `main.py` — arranque del thread al inicio de la app.
+- `routers/recordatorios.py` — 5 endpoints nuevos + carga en `index()`.
+- `templates/recordatorios.html` — tercera pestaña "Convenios".
+- `json/convenios_config.json` — sección `recordatorios`.
+- `core/rutas_recordatorios.py` — `CONVENIOS_CACHE`.
+
+## Qué se hizo
+
+### 1. Generación de mensajes (`convenios_generator.py`)
+
+- Recorre convenios con `estado NOT IN ('pagado', 'cancelado')` y
+  `fecha_vencimiento != ''`.
+- Calcula saldo pendiente (`monto_total - suma pagos efectuados`).
+- Calcula `dias = fecha_vencimiento - hoy`:
+  - `< 0` → vencido.
+  - `0..dias_por_vencer` → por vencer.
+  - `> dias_por_vencer` → no genera.
+- Genera mensaje y lo inserta con `id = conv-<cid>-<YYYY-MM-DD>`.
+- Devuelve `{nuevos, omitidos, total}`.
+
+### 2. Job diario (`shared/jobs_convenios.py`)
+
+- Thread daemon, arranca con `iniciar()` desde `main.py`.
+- Lee `json/convenios_config.json` → `recordatorios` cada ciclo.
+- Duerme hasta la próxima hora configurada.
+- Al arrancar, si ya pasó la hora y no se ejecutó hoy, corre de
+  inmediato.
+- No usa `shared/jobs.py` (ese es para jobs manuales con progreso).
+
+### 3. Endpoints en `routers/recordatorios.py`
+
+- `GET /recordatorios/convenios/whatsapp/{idx}` — URL + mensaje.
+- `POST /recordatorios/convenios/marcar/{idx}` — marca enviado.
+- `POST /recordatorios/convenios/desmarcar/{idx}` — desmarca.
+- `POST /recordatorios/convenios/descartar/{idx}` — descarta (no se
+  regenera hoy).
+- `POST /recordatorios/convenios/regenerar` — fuerza la generación.
+
+El `index()` carga `convenios_importada.json`, filtra descartados,
+enriquece con `enviado` (consultando `historial.ya_fue_enviado`) y
+pasa `convenios_rich` al template.
+
+### 4. Frontend (`recordatorios.html`)
+
+- Tercera pestaña "Convenios" con contador.
+- Tabla con: ✔ | Cliente | Teléfono | Mascota | Folio | Saldo | Vencimiento | Días | Tipo.
+- Mismos handlers que Citas/Vacunas: clic en fila selecciona, doble clic
+  muestra mensaje, botón único Enviar/Desmarcar funciona genérico.
+- Persistencia de tab activo extendida a `convenios`.
+
+### 5. Configuración (`convenios_config.json`)
+
+    {
+      "recordatorios": {
+        "activo": true,
+        "hora": "08:00",
+        "dias_por_vencer": 3
+      }
+    }
+
+## Bugs resueltos en esta sesión
+
+- **Ninguno.** Todo se implementó sin bugs. Los puntos frágiles fueron:
+  - El nombre exacto de `CONVENIOS_CONFIG` en `shared/rutas.py`.
+  - El nombre exacto de `UPLOADS_DIR` en `rutas_recordatorios.py`.
+  - El JS del tab activo en `recordatorios.html` (se generalizó con
+    `data-bs-target` para no hardcodear `vacunas` vs `convenios`).
+
+## Estado actual
+
+### Funcional
+- ✅ Job diario de recordatorios de convenios.
+- ✅ Tercera pestaña "Convenios" en Recordatorios.
+- ✅ Envío por WhatsApp con el mismo flujo que Citas/Vacunas.
+- ✅ Reset borra también `convenios_importada.json`.
+- ✅ Todos los módulos anteriores siguen funcionando.
+
+### Pendiente (Convenios / Recordatorios)
+- 📝 Botón "Regenerar" en la pestaña Convenios (hoy solo por `curl`).
+- 📝 Botón "Descartar" en cada fila (endpoint ya existe, falta UI).
+- 📝 Filtros en el listado de convenios.
+- 📝 Reportes con árbol en Convenios.
+- 📝 Exportar a Excel los convenios.
+
+### Pendiente (global, arrastrado)
+- 🧪 Tests automáticos.
+- ⏰ Arranque automático con el sistema (hoy el job corre solo si la
+  app está abierta; para que corra con la app cerrada hace falta una
+  tarea programada de Windows que arranque uvicorn al inicio).
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Verificar que el job arrancó: buscar en consola `[convenios_job] Thread iniciado`.
+- Forzar la generación sin esperar a las 08:00:
+  `curl -X POST http://127.0.0.1:8000/recordatorios/convenios/regenerar`
+- Probar la pestaña: `http://127.0.0.1:8000/recordatorios` → tab Convenios.
+- Cambiar la hora del job: editar `json/convenios_config.json` →
+  `recordatorios.hora` y reiniciar uvicorn.
+- Desactivar el job temporalmente: `recordatorios.activo = false` y
+  reiniciar.
+
+## Reglas nuevas (Recordatorios / Convenios)
+
+1. El job de recordatorios de convenios corre en un thread daemon en
+   `shared/jobs_convenios.py`, separado de `shared/jobs.py`.
+2. Un mensaje por convenio por día. El `id = conv-<cid>-<YYYY-MM-DD>`
+   lo garantiza. Al día siguiente, si sigue vencido, se genera uno
+   nuevo.
+3. El job no envía nada solo. Solo prepara los mensajes. El envío es
+   manual desde la pestaña Convenios.
+4. El `reset` de Recordatorios borra también `convenios_importada.json`.
+5. Los mensajes descartados (`descartado: true`) no se regeneran el
+   mismo día. Al día siguiente sí.
+6. El historial de envíos de convenios usa `historial_recordatorios.json`
+   con `tipo="convenios"`. Es genérico, no requiere cambios.
+7. Si la app estaba apagada a la hora configurada, el job corre al
+   arrancar (si ya pasó la hora y no se generó hoy).
+
+# Sesión de trabajo — 2026-11-14/15 (VetSuite Web v0.9.x — módulo Convenios de Pago)
+
+## Resumen
+
+Se implementó desde cero el módulo **Convenios de Pago** (`/convenios`).
+Permite generar un convenio de pago (reconocimiento de deuda) con el
+cliente, con plan de pagos dinámico, imprimirlo en formato Carta (sin
+abrir pestaña nueva) y dar seguimiento a los pagos con bloqueo por
+contraseña una vez que hay pagos efectuados.
+
+Se completó:
+- Tablas `convenios`, `convenios_pagos`, `convenios_alertas_vistas`.
+- Módulo `core/convenios/` (`numero_a_letras.py`, `helpers.py`).
+- Router `/convenios` con 12 endpoints.
+- Templates `convenios.html`, `convenios_form.html`, `convenios_print.html`.
+- Config `json/convenios_config.json` (datos de la clínica + contraseña).
+- Permiso `"convenios"` en `ip_permisos.json`.
+- Item en el sidebar con icono `ti-file-text`.
+- Estilos en `static/style.css` (sección Convenios).
+- Bloqueo de pagos efectuados + contraseña opcional.
+- Impresión vía iframe oculto (sin pestaña visible).
+- Alertas de vencimiento con celda pintada (rojo/amarillo + días).
+
+## Qué se hizo
+
+### 1. Modelo de datos
+
+Tres tablas nuevas en `shared/db.py`:
+
+- `convenios` (una fila por convenio).
+- `convenios_pagos` (una fila por pago, con `albaran`, `factura_numero`,
+  `factura_uuid`, `tipo_pago`, `pagado_con_tarjeta`).
+- `convenios_alertas_vistas` (marca de "visto hoy" por convenio).
+
+Migración idempotente: si `convenios_pagos` ya existe sin las columnas
+nuevas, se agregan con `ALTER TABLE`.
+
+### 2. Conversor de monto a letra (`core/convenios/numero_a_letras.py`)
+
+- Trabaja con centavos enteros para evitar errores de punto flotante.
+- `numero_a_letras(5500)` → `"CINCO MIL QUINIENTOS PESOS 00/100 M.N."`.
+- `numero_a_letras(1234567.89)` → `"UN MILLÓN DOSCIENTOS TREINTA Y
+  CUATRO MIL QUINIENTOS SESENTA Y SIETE PESOS 89/100 M.N."`.
+
+### 3. Helpers (`core/convenios/helpers.py`)
+
+- `generar_folio(conn)` — `CONV-<año>-<consecutivo 4 dígitos>`.
+- `buscar_ingreso_por_cliente(conn, nombre, rfc)` — busca factura en
+  `ingresos` a nombre del cliente (no público en general).
+- `calcular_estado_pago(conn, cid)` — total, pagado, pendiente,
+  n_pagos, n_pagados.
+- `cargar_alertas_vistas()` / `marcar_alerta_vista(cid)` — set de
+  convenios vistos hoy.
+- `fecha_legible(iso)` — `"30 de septiembre de 2026"`.
+- `password_configurada()` — lee `password_hash` de la config.
+- `verificar_password(pwd)` — SHA256 del password contra el hash.
+- `convenio_tiene_pagos_efectuados(conn, cid)` — bool.
+
+### 4. Router (`routers/convenios.py`)
+
+- `GET /convenios` — listado con alertas.
+- `GET /convenios/nuevo` — formulario vacío.
+- `GET /convenios/{cid}/editar` — formulario con pagos.
+- `GET /convenios/{cid}/imprimir` — template Carta.
+- `GET /convenios/numero-a-letras?monto=N` — letra del monto.
+- `GET /convenios/buscar-cliente?q=&rfc=` — busca factura.
+- `POST /convenios/guardar` — crear/actualizar con upsert de pagos.
+- `POST /convenios/{cid}/estado` — cambiar estado.
+- `POST /convenios/{cid}/pago/{pid}/marcar` — marcar pago.
+- `POST /convenios/{cid}/eliminar` — eliminar (borrador sin pagos).
+- `POST /convenios/{cid}/alerta-vista` — marcar alerta.
+- `POST /convenios/verificar-password` — validar contraseña.
+
+### 5. Frontend
+
+- `convenios.html` — listado con bandeja de alertas, tabla con celda
+  de vencimiento pintada, doble clic para editar, botón 🖨 con iframe.
+- `convenios_form.html` — formulario con plan de pagos dinámico,
+  búsqueda de factura por fila, modo bloqueado si hay pagos efectuados,
+  botón "Desbloquear" con contraseña.
+- `convenios_print.html` — formato Carta, sin IVA, con tabla de pagos,
+  firmas (tutor y personal), auto-print opcional con `?auto=1`.
+
+### 6. Impresión sin pestaña visible
+
+`imprimirConvenio(id)` crea un `<iframe>` en el DOM con:
+- `position: fixed`, `width/height: 1px`, `opacity: 0`,
+  `pointer-events: none`.
+- `src = /convenios/{id}/imprimir`.
+- `onload` → `iframe.contentWindow.focus(); print()`.
+- `afterprint` → remove el iframe.
+- Fallback a `window.open(..., '_blank')` si `print()` falla.
+
+### 7. Bloqueo de pagos efectuados
+
+- Los pagos con `efectuado=1` se muestran como solo lectura (inputs
+  disabled, sin botón 🗑).
+- Si el convenio tiene al menos un pago efectuado, el formulario entra
+  en modo bloqueado (todos los campos disabled, excepto los pagos
+  pendientes).
+- Botón "Desbloquear" pide contraseña (si `password_hash` está
+  configurado).
+- El backend rechaza (409) cambios estructurales (monto, fecha,
+  propietario, mascota) cuando hay pagos efectuados.
+- El backend rechaza (409) eliminar convenios con pagos efectuados.
+
+## Bugs resueltos en esta sesión
+
+- **Pagos no se guardaban al editar**: el `for i, p in enumerate(pagos, 1)`
+  estaba indentado dentro del `else` (solo se ejecutaba al crear). Fix:
+  moverlo fuera del `if/else` y hacer upsert por `id`.
+- **`DELETE FROM convenios_pagos` al editar borraba los pagos
+  efectuados**: Fix: eliminar solo los no efectuados que ya no vienen
+  en el payload.
+- **`TypeError: Object of type Row is not JSON serializable`** en
+  `editar`: `pagos` se pasaba como `Row` al template y `tojson` tronaba.
+  Fix: `pagos = [dict(p) for p in pagos_rows]`. `conv` se queda como
+  `Row` porque Jinja2 necesita `.campo`.
+- **`jinja2.exceptions.UndefinedError: 'c' is undefined`** en
+  `convenios_form.html` línea 14: el botón de imprimir usaba `{{ c.id }}`
+  pero en el formulario la variable es `conv`. Fix: `{{ conv.id }}`.
+- **`{{ pagos|tojson if pagos else '[]' }}`** devolvía un string `'[]'`
+  cuando no había pagos, y el JS hacía `PAGOS_INICIALES.forEach(...)`
+  sobre un string. Fix: `{{ pagos|tojson }}` (el filtro `tojson` ya
+  devuelve `[]` para lista vacía).
+- **`numero_a_letras(1234567.89)`** daba `...SESENTA Y OCHO PESOS
+  -11/100 M.N.` por error de punto flotante. Fix: trabajar con
+  centavos enteros (`round(monto * 100)` y `divmod`).
+
+## Estado actual
+
+### Funcional
+- ✅ Módulo Convenios de Pago completo.
+- ✅ Folio automático, plan de pagos dinámico, monto en letra.
+- ✅ Búsqueda de factura del cliente en `ingresos`.
+- ✅ Impresión Carta sin pestaña visible.
+- ✅ Alertas de vencimiento con celda pintada.
+- ✅ Bloqueo de pagos efectuados + contraseña opcional.
+- ✅ Todos los módulos anteriores siguen funcionando.
+
+### Pendiente (Convenios)
+- 📝 Generación automática de recordatorios de convenios vencidos
+  (insertar en `uploads/recordatorios/` y enviar por WhatsApp).
+- 📝 Job diario de vencidos (fase 2 del punto anterior).
+- 📝 Filtros en el listado (estado, rango de fechas, cliente).
+- 📝 Reportes con árbol (Año → Mes → Estado).
+- 📝 Exportar a Excel.
+
+### Pendiente (global, arrastrado)
+- 🧪 Tests automáticos (Recordatorios, Ingresos, Egresos, Corte,
+  Servicios Externos, Convenios).
+- ⏰ Arranque automático con el sistema.
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Probar Convenios: `http://127.0.0.1:8000/convenios`
+- La config vive en `json/convenios_config.json`.
+- Para activar la contraseña:
+  `python -c "import hashlib; print(hashlib.sha256('TU_CONTRASEÑA'.encode()).hexdigest())"`
+  y pegar el resultado en `seguridad.password_hash`.
+- Si se corrompe `convenios_alertas_vistas.json`, se puede borrar sin
+  problema (se regenera vacío).
+
+## Reglas nuevas (Convenios de Pago)
+
+72. Los convenios NO llevan IVA (servicios médicos veterinarios exentos).
+73. Los pagos se guardan con upsert por `id`. Los efectuados nunca se
+    modifican ni se eliminan desde el formulario.
+74. El botón 🗑 del listado solo aparece si `estado == 'borrador'` y no
+    hay pagos efectuados.
+75. Cambios estructurales (monto, fecha, propietario, mascota) se
+    bloquean si hay pagos efectuados (409).
+76. La contraseña de desbloqueo es opcional (`password_hash` vacío →
+    modo abierto). En producción debe estar configurada.
+77. La búsqueda de factura solo vincula facturas a nombre del cliente
+    (no público en general). Primero por RFC, luego por nombre.
+78. `pagado_con_tarjeta` se deriva del tipo de pago (`Tarjeta *`).
+79. La impresión usa iframe oculto con `print()`. Fallback a pestaña
+    nueva si el navegador lo bloquea.
+80. Doble clic en fila del listado abre editar. Botones de la fila
+    tienen `event.stopPropagation()`.
+81. La celda de vencimiento se pinta rojo (`celda-vencida`) o amarillo
+    (`celda-por-vencer`) según el estado, con los días debajo.
+82. El módulo `"convenios"` debe estar en `ip_permisos.json`.
+83. El conversor `numero_a_letras` trabaja con centavos enteros para
+    evitar errores de punto flotante.
+
 # Sesión de trabajo — 2026-11-10 (VetSuite Web v0.9.x — pre-filtro de fechas en Gmail vía X-GM-RAW)
 
 ## Resumen
@@ -90,8 +543,6 @@ Esto mantiene la compatibilidad sin romper el flujo.
   Servicios Externos).
 - Documentación de instalación en Windows 11.
 - Arranque automático con el sistema.
-- Revisar `iicio.txt` y borrarlo.
-- Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
 
 ## Cómo trabajar
 
@@ -382,12 +833,8 @@ del módulo (`admin_ips`) es independiente de la URL pública.
 - Tests automáticos del filtro y del regex.
 
 ### Pendiente (global, arrastrado)
-- Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
-- Documentar instalación en Windows 11.
-- Revisar `iicio.txt` y borrarlo.
 - Tests automáticos (Recordatorios, Ingresos, Egresos, Corte, Servicios
   Externos).
-- Arranque automático con el sistema.
 
 ## Cómo trabajar
 
@@ -588,12 +1035,8 @@ no duplicar el bloque de "releer + totales + enriquecer".
 - Tests automáticos de la regeneración de observaciones.
 
 ### Pendiente (global, arrastrado)
-- Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
-- Documentar instalación en Windows 11.
-- Revisar `iicio.txt` y borrarlo.
 - Tests automáticos (Recordatorios, Ingresos, Egresos, Corte, Servicios
   Externos).
-- Arranque automático con el sistema.
 
 ## Cómo trabajar
 
@@ -809,12 +1252,8 @@ Pendiente (Servicios Externos):
 - Historial de semanas cerradas.
 
 Pendiente (global, arrastrado):
-- Limpiar print() de debug en sat/descarga.py (líneas 142-146).
-- Documentar instalación en Windows 11.
-- Revisar iicio.txt (archivo huérfano) y borrarlo.
 - Tests automáticos (Recordatorios, Ingresos, Egresos, Corte, Servicios
   Externos).
-- Arranque automático con el sistema.
 
 ## Cómo trabajar
 
@@ -1002,11 +1441,7 @@ estructura exacta del original. Útil si la plantilla se pierde o corrompe.
 - 📝 Historial de cierres.
 
 ### Pendiente (global, arrastrado)
-- 🧹 Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
-- 🪟 Documentar instalación en Windows 11.
-- 🐛 Revisar `iicio.txt` (archivo huérfano) y borrarlo.
 - 🧪 Tests automáticos (Recordatorios, Ingresos, Egresos, Corte).
-- ⏰ Arranque automático con el sistema.
 
 ## Cómo trabajar
 
@@ -1170,10 +1605,7 @@ arbol["_total"] = {
 
 ### Pendiente
 - 📝 Actualizar `CONTEXTO.md` con la arquitectura final. **(hecho en esta sesión)**
-- 🧹 Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
-- 🪟 Documentar instalación en Windows 11.
 - 🧪 Pruebas del usuario final en Ingresos, Egresos y Recordatorios.
-- 🐛 Revisar `iicio.txt` (archivo huérfano) y borrarlo.
 
 ## Cómo trabajar
 
@@ -1333,10 +1765,7 @@ de mensajes no enviados y persistencia de UI (tab activo y scroll) en
 
 ### Pendiente
 - 📝 Actualizar `CONTEXTO.md` con la arquitectura final. **(hecho en esta sesión)**
-- 🧹 Limpiar `print()` de debug en `sat/descarga.py` (líneas 142-146).
-- 🪟 Documentar instalación en Windows 11.
 - 🧪 Pruebas del usuario final en Ingresos, Egresos y Recordatorios.
-- 🐛 Revisar `iicio.txt` (archivo huérfano) y borrarlo.
 
 ## Cómo trabajar
 
