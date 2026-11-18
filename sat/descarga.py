@@ -18,7 +18,6 @@ Cambios v2.1.2:
 
 import base64
 import zipfile
-from datetime import datetime
 from pathlib import Path
 
 from cfdiclient import (

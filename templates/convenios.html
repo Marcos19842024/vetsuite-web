@@ -39,7 +39,12 @@
 <!-- Barra de herramientas -->
 <div class="card mb-3">
   <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
-    <div class="btn-lis">
+    <div class="btn-list">
+      <button type="button" class="btn btn-outline-secondary btn-sm"
+              onclick="abrirModalReportes()">
+        <i class="ti ti-list me-1" style="font-size: 1.15rem;"></i> Ver registros
+      </button>
+      <span class="vr mx-2"></span>
       <a
         href="/convenios/excel{% if filtros.estado or filtros.desde or filtros.hasta or filtros.q %}?estado={{ filtros.estado }}&desde={{ filtros.desde }}&hasta={{ filtros.hasta }}&q={{ filtros.q }}{% endif %}"
         class="btn btn-outline-success btn-sm">
@@ -167,10 +172,38 @@
     </table>
   </div>
 </div>
+
+<dialog id="modal-reportes" style="max-width: 720px; width: 92vw;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title">
+        <i class="ti ti-list me-1" style="font-size: 1.15rem;"></i>
+        Convenios por período
+      </h5>
+      <button type="button" class="btn-close btn-sm"
+              onclick="document.getElementById('modal-reportes').close()"></button>
+    </div>
+    <div class="modal-body" style="max-height: 70vh; overflow: auto;">
+      <div id="arbol-reportes">
+        <p class="text-muted small mb-2">
+          Clic en un <strong>estado</strong> para filtrar el listado
+          por ese mes y estado.
+        </p>
+        <div class="text-muted text-center py-4">Cargando...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span class="text-muted small me-auto" id="arbol-resumen"></span>
+    </div>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script>
+  const fmtMonto = (n) => '$' + Number(n || 0).toLocaleString('es-MX',
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   async function marcarVista(id) {
     await fetch(`/convenios/${id}/alerta-vista`, {method: 'POST'});
     document.querySelector(`.alerta-item[data-id="${id}"]`)?.remove();
@@ -210,5 +243,112 @@
       if (inp.value) aplicarFiltroTexto();
     }
   });
+
+  // ============================================================
+// Modal de Reportes (árbol Año → Mes → Estado)
+// ============================================================
+const MESES_ES_REP = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const ESTADOS_CONV = ['borrador','impreso','firmado','pagado','cancelado'];
+const ETIQUETA_ESTADO_CONV = {
+  borrador:  'Borrador',
+  impreso:   'Impreso',
+  firmado:   'Firmado',
+  pagado:    'Pagado',
+  cancelado: 'Cancelado',
+};
+
+async function abrirModalReportes() {
+  const modal = document.getElementById('modal-reportes');
+  const cont  = document.getElementById('arbol-reportes');
+  const resumen = document.getElementById('arbol-resumen');
+
+  modal.showModal();
+  cont.innerHTML = '<div class="text-muted text-center py-4">Cargando...</div>';
+  resumen.textContent = '';
+
+  try {
+    const resp = await fetch('/convenios/arbol', { cache: 'no-store' });
+    const data = await resp.json();
+    const anios = Object.keys(data).filter(k => k !== '_total');
+
+    if (anios.length === 0) {
+      cont.innerHTML = '<div class="text-muted text-center py-4">No hay convenios aún.</div>';
+      return;
+    }
+
+    cont.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'arbol-reportes';
+    anios.sort().reverse().forEach(a => ul.appendChild(nodoAnioConv(a, data[a])));
+    cont.appendChild(ul);
+
+    const tg = data._total || { n: 0, total: 0 };
+    resumen.textContent = `Total general: ${tg.n} convenios · $${fmtMonto(tg.total)}`;
+  } catch (e) {
+    cont.innerHTML = `<div class="text-danger text-center py-4">Error: ${e.message}</div>`;
+  }
+}
+
+function nodoAnioConv(anio, meses) {
+  const li = document.createElement('li');
+  const det = document.createElement('details');
+  const sum = document.createElement('summary');
+  const t = meses._total || { n: 0, total: 0 };
+  sum.innerHTML = `<strong>📅 ${anio}</strong>
+    <span class="text-muted small ms-2">${t.n} conv. · $${fmtMonto(t.total)}</span>`;
+  det.appendChild(sum);
+
+  const ul = document.createElement('ul');
+  Object.keys(meses).filter(k => k !== '_total').sort().reverse()
+    .forEach(m => ul.appendChild(nodoMesConv(anio, m, meses[m])));
+  det.appendChild(ul);
+  li.appendChild(det);
+  return li;
+}
+
+function nodoMesConv(anio, mes, estados) {
+  const li = document.createElement('li');
+  const det = document.createElement('details');
+  const sum = document.createElement('summary');
+  const t = estados._total || { n: 0, total: 0 };
+  const nombreMes = MESES_ES_REP[parseInt(mes, 10) - 1] || mes;
+  sum.innerHTML = `<strong>📆 ${nombreMes} ${anio}</strong>
+    <span class="text-muted small ms-2">${t.n} conv. · $${fmtMonto(t.total)}</span>`;
+  det.appendChild(sum);
+
+  const ul = document.createElement('ul');
+  // Mostrar todos los estados aunque estén vacíos (consistencia con Egresos PUE/PPD)
+  ESTADOS_CONV.forEach(est => {
+    if (estados[est]) ul.appendChild(nodoEstadoConv(anio, mes, est, estados[est]));
+  });
+  det.appendChild(ul);
+  li.appendChild(det);
+  return li;
+}
+
+function nodoEstadoConv(anio, mes, estado, info) {
+  const li = document.createElement('li');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'nodo-sucursal-btn';
+  btn.innerHTML = `<strong>${ETIQUETA_ESTADO_CONV[estado] || estado}</strong>
+    <span class="text-muted small ms-2">${info.n} · $${fmtMonto(info.total)}</span>`;
+  btn.title = `Filtrar listado: ${ETIQUETA_ESTADO_CONV[estado] || estado} en ${MESES_ES_REP[parseInt(mes, 10) - 1]} ${anio}`;
+  btn.addEventListener('click', () => {
+    document.getElementById('modal-reportes').close();
+    const mm = String(mes).padStart(2, '0');
+    const ultimoDia = new Date(parseInt(anio, 10), parseInt(mes, 10), 0).getDate();
+    const desde = `${anio}-${mm}-01`;
+    const hasta = `${anio}-${mm}-${String(ultimoDia).padStart(2, '0')}`;
+    const params = new URLSearchParams({ estado, desde, hasta, q: '' });
+    window.location.href = `/convenios?${params.toString()}`;
+  });
+  li.appendChild(btn);
+  return li;
+}
+
+// Exponer para los onclick del HTML
+window.abrirModalReportes = abrirModalReportes;
 </script>
 {% endblock %}

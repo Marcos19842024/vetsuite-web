@@ -43,7 +43,7 @@ def _ejecutar_si_toca() -> None:
         return
     try:
         resultado = generar(dias_por_vencer=int(cfg.get("dias_por_vencer", 3)))
-        _ultima_ejecucion["fecha"] = hoy
+        _ultima_ejecucion["fecha"] = hoy # type: ignore
         print(f"[convenios_job] {datetime.datetime.now().isoformat(timespec='seconds')} "
               f"nuevos={resultado['nuevos']} omitidos={resultado['omitidos']} total={resultado['total']}")
     except Exception as e:

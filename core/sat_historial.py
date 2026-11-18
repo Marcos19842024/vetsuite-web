@@ -40,7 +40,7 @@ from core.rutas_egresos import CARPETA_DATOS  # ajusta si el nombre difiere
 # Rutas
 # ─────────────────────────────────────────────────────────────
 
-HISTORIAL_DIR = Path(__file__).parent.parent / "uploads" / "egresos" / "_sat_historial"
+from shared.rutas import SAT_HISTORIAL_DIR as HISTORIAL_DIR
 ERRORES_DIR = HISTORIAL_DIR / "_errores"
 
 
@@ -58,9 +58,8 @@ def _timestamp() -> str:
 
 def _historial_activo() -> bool:
     try:
-        from egresos.sat_wrapper import cargar_config
-        cfg = cargar_config()
-        return bool(cfg.get("guardar_historial_sat", False))
+        from egresos.config_egresos import historial_sat_activo
+        return historial_sat_activo()
     except Exception:
         return False
 

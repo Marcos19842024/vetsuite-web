@@ -1,7 +1,6 @@
 from datetime import date
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
 
 from pathlib import Path
 from shared.db import get_conn
@@ -13,7 +12,7 @@ import json
 
 router = APIRouter(prefix="/corte_semanal", tags=["corte semanal"])
 
-RUTA_CORTES = Path(__file__).resolve().parents[1] / "uploads" / "corte_semanal"
+from shared.rutas import CORTE_SEMANAL_DIR as RUTA_CORTES
 
 # Columnas capturables (todas menos las calculadas y observaciones)
 CAMPOS_CAPTURA = [

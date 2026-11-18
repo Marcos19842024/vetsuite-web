@@ -5,11 +5,10 @@ Configuración del módulo de Egresos.
 """
 
 import json
-from pathlib import Path
 
 # Importamos la carpeta de datos desde rutas_egresos (única fuente de verdad)
 from shared.rutas import (
-    CONFIG_EGRESOS as CONFIG_EGRESOS_FILE,
+    EGRESOS_CONFIG,
     PROVEEDORES_TC as PROVEEDORES_TC_FILE,
     PROVEEDORES_SUCURSAL as PROVEEDORES_SUCURSAL_FILE,
     OBSERVACIONES_EGRESOS as OBSERVACIONES_FILE,
@@ -32,9 +31,9 @@ CONFIG_EGRESOS_DEFAULT = {
 
 
 def cargar_config_egresos():
-    if CONFIG_EGRESOS_FILE.exists():
+    if EGRESOS_CONFIG.exists():
         try:
-            with open(CONFIG_EGRESOS_FILE, "r", encoding="utf-8") as f:
+            with open(EGRESOS_CONFIG, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
             for k, v in CONFIG_EGRESOS_DEFAULT.items():
                 cfg.setdefault(k, v)
@@ -45,7 +44,7 @@ def cargar_config_egresos():
 
 
 def guardar_config_egresos(cfg):
-    with open(CONFIG_EGRESOS_FILE, "w", encoding="utf-8") as f:
+    with open(EGRESOS_CONFIG, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
@@ -172,3 +171,17 @@ def activar_historial_sat(activar: bool = True) -> None:
     cfg = cargar_config_egresos()
     cfg["guardar_historial_sat"] = bool(activar)
     guardar_config_egresos(cfg)
+
+
+# ============================================================
+# FIEL (acceso rápido para sat_wrapper)
+# ============================================================
+def get_fiel() -> dict:
+    """Devuelve {rfc, cer, key, pwd} listo para sat.descarga."""
+    cfg = cargar_config_egresos()
+    return {
+        "rfc": cfg.get("rfc_receptor", ""),
+        "cer": cfg.get("certificado_cer", ""),
+        "key": cfg.get("certificado_key", ""),
+        "pwd": cfg.get("password_fiel", ""),
+    }

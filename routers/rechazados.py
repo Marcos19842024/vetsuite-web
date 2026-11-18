@@ -4,13 +4,10 @@ Permite ver, rescatar, reemplazar PDF y eliminar.
 """
 import json
 import shutil
-import tempfile
-import xml.etree.ElementTree as ET
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shared.templates_shared import templates
 
@@ -23,7 +20,6 @@ from ingresos.lector_facturas import (
 )
 
 router = APIRouter(prefix="/ingresos/rechazados", tags=["ingresos"])
-BASE_DIR = Path(__file__).parent.parent
 
 
 # ============================================================

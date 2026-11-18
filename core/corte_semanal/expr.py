@@ -2,7 +2,6 @@
 import re
 
 _TOKEN_NUM = re.compile(r"\d+(?:[.,]\d+)?")
-_TOKEN_SUMA = re.compile(r"[+\-]")
 
 
 def _a_float(tok: str) -> float:

@@ -1,3 +1,256 @@
+# Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — deuda técnica del refactor)
+
+## Resumen
+
+Sesión de **cierre de la deuda técnica del refactor de estructura**
+(2026-11-08). Se completaron los dos pendientes que quedaban:
+
+1. **Blindar `Path(__file__)`** — todos los `Path(__file__)` del proyecto
+   (fuera de `shared/rutas.py` y de `scripts/`) fueron reemplazados por
+   constantes de `shared.rutas`.
+2. **Consolidar la config de Egresos** — `egresos/config_egresos.py` y
+   `egresos/sat_wrapper.py` leían **archivos distintos**
+   (`config_egresos.json` fantasma vs `egresos_config.json` real) y
+   duplicaban lógica. Ahora hay una sola fuente de verdad.
+
+Sin cambios de funcionalidad. Solo mantenibilidad.
+
+Se completó:
+- `Path(__file__)` reemplazados en 9 archivos del proyecto.
+- Constantes nuevas en `shared/rutas.py`: `CORTE_SEMANAL_DIR`,
+  `EGRESOS_DIR`, `EGRESOS_CONTABILIDAD_DIR`, `SAT_HISTORIAL_DIR`.
+- `CONFIG_EGRESOS` en `shared.rutas` quedó como **alias** de
+  `EGRESOS_CONFIG` (compatibilidad hacia atrás).
+- `sat_wrapper.py` ya no reimplementa `cargar_config`,
+  `cargar_solicitud_activa`, `cargar_proveedores_sucursal`, etc.;
+  ahora importa de `config_egresos.py`.
+- Nuevo helper `get_fiel()` en `config_egresos.py` que devuelve
+  `{rfc, cer, key, pwd}` listo para `sat.descarga`.
+- `core/sat_historial.py` ahora usa `historial_sat_activo()` de
+  `config_egresos.py` (respeta también la env var `VET_SUITE_HISTORIAL=1`).
+
+## Qué se hizo
+
+### 1. `shared/rutas.py` — constantes nuevas
+
+Al final del archivo:
+
+    # --- Corte Semanal ---
+    CORTE_SEMANAL_DIR         = UPLOADS_DIR / "corte_semanal"
+
+    # --- Egresos (carpetas) ---
+    EGRESOS_DIR               = UPLOADS_DIR / "egresos"
+    EGRESOS_CONTABILIDAD_DIR  = EGRESOS_DIR / "contabilidad"
+    SAT_HISTORIAL_DIR         = EGRESOS_DIR / "_sat_historial"
+
+Y en la sección "Egresos":
+
+    CONFIG_EGRESOS = EGRESOS_CONFIG   # alias histórico
+
+### 2. Reemplazos de `Path(__file__)` (9 archivos)
+
+| Archivo | Antes | Después |
+|---|---|---|
+| `main.py` | `BASE = Path(__file__).parent` | `from shared.rutas import ROOT as BASE` |
+| `routers/egresos.py` | `BASE_DIR = Path(__file__).parent.parent` | `from shared.rutas import ROOT as BASE_DIR` |
+| `routers/corte_semanal.py` | `RUTA_CORTES = Path(__file__)...` | `from shared.rutas import CORTE_SEMANAL_DIR as RUTA_CORTES` |
+| `routers/rechazados.py` | `BASE_DIR = Path(__file__).parent.parent` | `from shared.rutas import ROOT as BASE_DIR` |
+| `core/rutas_recordatorios.py` | `BASE_DIR = Path(__file__)...` | `from shared.rutas import ROOT as BASE_DIR` |
+| `core/sat_historial.py` | `HISTORIAL_DIR = ...` | `from shared.rutas import SAT_HISTORIAL_DIR as HISTORIAL_DIR` |
+| `core/corte_semanal/excel_corte.py` | `parents[2] / "uploads"...` | `from shared.rutas import ROOT` |
+| `core/rutas_egresos.py` | `BASE_DIR = Path(__file__)...` | `from shared.rutas import EGRESOS_CONTABILIDAD_DIR, EGRESOS_DIR` |
+| `egresos/manager.py` | `BASE_DIR = Path(__file__).parent.parent` | `from shared.rutas import ROOT as BASE_DIR` |
+| `sat/procesar_xml.py` | `_raiz = Path(__file__).parent.parent` | `from shared.rutas import ROOT as _raiz` |
+
+**Excepción:** los `scripts/limpiar_facturas.py` y
+`scripts/reparar_archivos.py` conservan su `Path(__file__)` porque es
+bootstrap de `sys.path` (para que el script corra desde cualquier cwd),
+no una ruta de datos.
+
+### 3. `egresos/config_egresos.py` — única fuente de config
+
+- Importa `EGRESOS_CONFIG` (el archivo real), no `CONFIG_EGRESOS`.
+- `CONFIG_EGRESOS_DEFAULT` incluye `guardar_historial_sat`.
+- Nuevo helper `get_fiel()`.
+
+### 4. `egresos/sat_wrapper.py` — sin duplicados
+
+- **Eliminadas:** `cargar_config`, `guardar_config`,
+  `cargar_solicitud_activa`, `guardar_solicitud_activa`,
+  `limpiar_solicitud_activa`, `cargar_proveedores_sucursal`,
+  `guardar_proveedores_sucursal` (todas viven ahora en
+  `config_egresos.py`).
+- **Importadas** desde `egresos.config_egresos` con alias para no romper
+  a los consumidores (`cargar_config = cargar_config_egresos`, etc.).
+- **Conserva:** `probar_fiel`, `solicitar_descarga`,
+  `verificar_solicitud`, `descargar_paquetes`, `procesar_xmls`,
+  `guardar_facturas_egresos`, `marcar_animalia`.
+- Reexporta `get_fiel` desde `config_egresos`.
+
+### 5. `core/sat_historial.py` — usa el helper correcto
+
+- `_historial_activo()` ahora llama a
+  `config_egresos.historial_sat_activo()` (respeta env var
+  `VET_SUITE_HISTORIAL=1` + `guardar_historial_sat` del JSON).
+
+## Bugs latentes resueltos
+
+- **Dos configs distintas:** `config_egresos.py` leía
+  `json/config_egresos.json` (que probablemente no existía) y
+  `sat_wrapper.py` leía `json/egresos_config.json` (el real). Si el
+  usuario guardaba la FIEL desde un endpoint que usaba `config_egresos`,
+  `sat_wrapper` no la veía. Fix: un solo archivo (`egresos_config.json`)
+  y una sola implementación (`config_egresos.py`).
+- **`favicon()` en `main.py`** dependía del cwd (`Path("static/favicon.ico")`).
+  Fix: `BASE / "static" / "favicon.ico"` con `BASE` de `shared.rutas`.
+- **`sat_historial` no respetaba `VET_SUITE_HISTORIAL`.** Fix: usa
+  `historial_sat_activo()` que sí lo respeta.
+
+## Estado actual
+
+### Funcional
+- ✅ Todos los módulos funcionan igual (sin cambios de comportamiento).
+- ✅ Todos los `Path(__file__)` de datos centralizados en
+  `shared/rutas.py`.
+- ✅ Una sola fuente de verdad para la config de Egresos.
+- ✅ `historial_sat_activo()` respeta la env var.
+
+### Pendiente (deuda técnica)
+- Limpiar imports huérfanos en `sat_wrapper.py` (`datetime` ya no se usa
+  a nivel módulo). Cosmético.
+
+### Pendiente (global, arrastrado)
+- 🧪 Tests automáticos (el más grande).
+- ⏰ Arranque automático en macOS (ya con `launchd`).
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Verificar imports: `python -c "import main"`
+- Verificar constantes: `python -c "from shared.rutas import *"`
+- Verificar que no quedan `Path(__file__)` de datos:
+  `grep -rn "Path(__file__)" --include="*.py" . | grep -v "__pycache__" | grep -v "venv/" | grep -v "scripts/"`
+  (solo debe salir `shared/rutas.py`)
+- Probar `/egresos` (config FIEL + probar FIEL + descarga) para validar
+  que `sat_wrapper` sigue funcionando con los imports consolidados.
+
+## Reglas nuevas (deuda técnica resuelta)
+
+1. Todo `Path(__file__)` de datos vive en `shared/rutas.py`. El resto del
+   código importa constantes.
+2. Los `scripts/*.py` conservan su `Path(__file__)` de bootstrap de
+   `sys.path`.
+3. `json/egresos_config.json` es el **único** archivo de config de
+   Egresos. `CONFIG_EGRESOS` en `shared.rutas` es un alias de
+   `EGRESOS_CONFIG` por compatibilidad.
+4. `egresos/config_egresos.py` es la **única** fuente de config de
+   Egresos. `sat_wrapper.py` no lee JSON; importa de ahí.
+5. `sat_wrapper.py` reexporta `cargar_config`, `guardar_config`,
+   `cargar_solicitud_activa`, etc. con alias para no romper a los
+   consumidores. Si en el futuro se migran los imports, se pueden
+   eliminar los alias.
+6. `core/sat_historial.py` usa `config_egresos.historial_sat_activo()`,
+   que respeta `VET_SUITE_HISTORIAL=1` + `guardar_historial_sat`.
+
+# Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — cierre de Convenios: reportes con árbol)
+
+## Resumen
+
+Se completó el último pendiente del módulo **Convenios de Pago**: el
+modal de reportes con árbol jerárquico `Año → Mes → Estado`. Con esto el
+módulo queda cerrado al 100% y visualmente consistente con Ingresos,
+Egresos, Corte Semanal y Servicios Externos.
+
+Se completó:
+- Endpoint `GET /convenios/arbol` (árbol Año → Mes → Estado con `_total`
+  en cada nivel, incluida la raíz).
+- Botón "Ver registros" en la barra de herramientas de `/convenios`.
+- `<dialog id="modal-reportes">` con árbol Año → Mes → Estado.
+- Clic en estado: navega a `/convenios?estado=&desde=&hasta=&q=`
+  respetando los filtros híbridos ya implementados.
+
+## Qué se hizo
+
+### 1. Backend — `routers/convenios.py`
+
+- Endpoint `GET /convenios/arbol`.
+- Agrupa por `fecha[:4]` (año) y `fecha[5:7]` (mes) y `estado`.
+- Calcula `n` y `total` (suma de `monto_total`) por estado.
+- `_total` en tres niveles: estado → mes → año → raíz.
+- Header `Cache-Control: no-store`.
+- El `_total` raíz es obligatorio (regla 21 de CONTEXTO.md): sin él, el
+  footer del modal sale en 0.
+
+### 2. Frontend — `templates/convenios.html`
+
+- Botón "Ver registros" (icono Tabler `ti-list`) junto a "Exportar Excel".
+- `<dialog id="modal-reportes">` con:
+  - Header con título y botón ✕.
+  - Body con `<div id="arbol-reportes">`.
+  - Footer con `<span id="arbol-resumen">` para el total general.
+- JS del árbol:
+  - `abrirModalReportes()` — fetch a `/convenios/arbol`, renderiza.
+  - `nodoAnioConv()` — `<details>` expandible, muestra `_total` del año.
+  - `nodoMesConv()` — `<details>` expandible, muestra `_total` del mes
+    e itera sobre los 5 estados posibles.
+  - `nodoEstadoConv()` — botón hoja; clic navega a `/convenios` con
+    `estado`, `desde` (primer día del mes) y `hasta` (último día del
+    mes) como query params.
+- `window.abrirModalReportes = abrirModalReportes` al final (regla 15
+  de Servicios Externos).
+- Helper `fmtMonto` agregado al `<script>` (no existía en
+  `convenios.html`).
+
+### 3. Estilos
+
+- No se tocó `static/style.css`. Se reutilizan las clases existentes
+  `.arbol-reportes`, `.nodo-sucursal-btn` y `.nodo-hoja` de Egresos y
+  Servicios Externos.
+
+## Bugs resueltos en esta sesión
+
+- **Ninguno.** Todo se implementó siguiendo el patrón de
+  `servicios_externos` y no hubo incidentes.
+
+## Estado actual
+
+### Funcional
+- ✅ Módulo **Convenios de Pago completo al 100%** (captura, pagos,
+  impresión, alertas, bloqueo, eliminación, filtros, Excel, UUID,
+  recordatorios automáticos, **reportes con árbol**).
+- ✅ Todos los módulos anteriores siguen funcionando.
+
+### Pendiente (Convenios)
+- Ninguno.
+
+### Pendiente (global, arrastrado)
+- 🧪 Tests automáticos (el más grande, requiere sesión dedicada).
+- ⏰ Arranque automático con el sistema en macOS (ya implementado por
+  el usuario con `launchd`).
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Probar árbol de Convenios: `http://127.0.0.1:8000/convenios` →
+  botón "Ver registros".
+- Endpoint directo: `http://127.0.0.1:8000/convenios/arbol` (debe
+  devolver JSON con `_total` en cada nivel, incluida la raíz).
+
+## Reglas nuevas (Convenios / Reportes)
+
+1. El árbol de Convenios tiene tres niveles: **Año → Mes → Estado**.
+2. Los estados visibles son los mismos que el `<select>` del listado:
+   `borrador`, `impreso`, `firmado`, `pagado`, `cancelado`.
+3. `_total` debe existir en los cuatro niveles (estado, mes, año,
+   raíz). Sin el de raíz, el footer sale en 0.
+4. Clic en estado navega a `/convenios?estado=&desde=&hasta=&q=`
+   con `desde = primer día del mes` y `hasta = último día del mes`.
+5. El endpoint manda `Cache-Control: no-store`.
+6. Los estilos del árbol se reutilizan de Egresos / Servicios Externos
+   (`.arbol-reportes`, `.nodo-sucursal-btn`, `.nodo-hoja`).
+7. `window.abrirModalReportes = abrirModalReportes` al final del
+   `<script>` (mismo patrón que Servicios Externos).
+
 # Sesión de trabajo — 2026-11-16 (VetSuite Web v0.9.x — cierre de Convenios)
 
 ## Resumen

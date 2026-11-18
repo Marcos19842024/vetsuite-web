@@ -7,7 +7,6 @@ import json
 import threading
 import uuid
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from shared.rutas import JOBS_STATE as STATE_FILE
 

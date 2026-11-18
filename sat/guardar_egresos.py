@@ -11,7 +11,6 @@ La ruta se delega a core.rutas_egresos (única fuente de verdad).
 """
 import json
 from datetime import datetime
-from pathlib import Path
 
 from core.rutas_egresos import ruta_registros_egresos
 

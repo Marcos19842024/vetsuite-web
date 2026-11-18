@@ -1,81 +1,22 @@
 """
 Wrapper del SAT para la web.
-Importa las funciones de sat/ (que son tu código original) y las adapta
+Importa las funciones de sat/ (tu código original) y las adapta
 para el flujo web (sin tkinter, sin mensajes bloqueantes).
+
+La configuración (FIEL, solicitud activa, proveedores) se lee y escribe
+desde `egresos.config_egresos` — única fuente de verdad. Este módulo solo
+se encarga de la interacción con `sat/`.
 """
-import json
-from datetime import datetime
-from pathlib import Path
-
-from shared.rutas import (
-    EGRESOS_CONFIG as CONFIG_FILE,
-    PROVEEDORES_SUCURSAL as PROVEEDORES_FILE,
-    SOLICITUD_SAT_ACTIVA as SOLICITUD_FILE,
+from egresos.config_egresos import (
+    cargar_config_egresos as cargar_config,
+    guardar_config_egresos as guardar_config,
+    cargar_solicitud_activa,
+    guardar_solicitud_activa,
+    limpiar_solicitud_activa,
+    cargar_proveedores_sucursal,
+    guardar_proveedores_sucursal,
+    get_fiel,
 )
-
-DEFAULT_CONFIG = {
-    "rfc_receptor": "",
-    "nombre_receptor": "",
-    "certificado_cer": "",
-    "certificado_key": "",
-    "password_fiel": "",
-    "ultima_descarga": "",
-}
-
-
-def cargar_config():
-    if not CONFIG_FILE.exists():
-        return dict(DEFAULT_CONFIG)
-    try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return dict(DEFAULT_CONFIG)
-
-
-def guardar_config(cfg):
-    CONFIG_FILE.write_text(
-        json.dumps(cfg, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-
-def cargar_solicitud_activa():
-    if not SOLICITUD_FILE.exists():
-        return None
-    try:
-        return json.loads(SOLICITUD_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-
-def guardar_solicitud_activa(datos):
-    SOLICITUD_FILE.write_text(
-        json.dumps(datos, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-
-def limpiar_solicitud_activa():
-    try:
-        SOLICITUD_FILE.unlink(missing_ok=True)
-    except Exception:
-        pass
-
-
-def cargar_proveedores_sucursal():
-    if not PROVEEDORES_FILE.exists():
-        return {}
-    try:
-        return json.loads(PROVEEDORES_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def guardar_proveedores_sucursal(prov):
-    PROVEEDORES_FILE.write_text(
-        json.dumps(prov, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
 
 
 def probar_fiel(rfc, cer, key, pwd):

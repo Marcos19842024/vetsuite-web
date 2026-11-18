@@ -8,16 +8,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from shared.campos import MESES_ES
+from shared.rutas import EGRESOS_CONTABILIDAD_DIR, EGRESOS_DIR
 
-
-BASE_DIR = Path(__file__).parent.parent / "uploads" / "egresos" / "contabilidad"
+BASE_DIR = EGRESOS_CONTABILIDAD_DIR
 
 
 def _carpeta_datos():
     if getattr(sys, 'frozen', False):
         carpeta = Path.home() / "Documents" / "Vet Suite" / "egresos"
     else:
-        carpeta = Path(__file__).parent.parent / "uploads" / "egresos"
+        carpeta = EGRESOS_DIR
     carpeta.mkdir(parents=True, exist_ok=True)
     return carpeta
 

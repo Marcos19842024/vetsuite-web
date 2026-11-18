@@ -35,7 +35,7 @@ GMAIL_CONFIG              = JSON_DIR / "gmail_config.json"
 EGRESOS_CONFIG            = JSON_DIR / "egresos_config.json"
 PROVEEDORES_SUCURSAL      = JSON_DIR / "proveedores_sucursal.json"
 SOLICITUD_SAT_ACTIVA      = JSON_DIR / "solicitud_sat_activa.json"
-CONFIG_EGRESOS            = JSON_DIR / "config_egresos.json"
+CONFIG_EGRESOS            = EGRESOS_CONFIG   # alias histórico
 PROVEEDORES_TC            = JSON_DIR / "proveedores_tc.json"
 OBSERVACIONES_EGRESOS     = JSON_DIR / "observaciones_egresos.json"
 
@@ -48,3 +48,11 @@ SERVICIOS_EXTERNOS_CONFIG = JSON_DIR / "servicios_externos_config.json"
 # --- Convenios ---
 CONVENIOS_CONFIG = JSON_DIR / "convenios_config.json"
 CONVENIOS_ALERTAS_VISTAS = JSON_DIR / "convenios_alertas_vistas.json"
+
+# --- Corte Semanal ---
+CORTE_SEMANAL_DIR         = UPLOADS_DIR / "corte_semanal"
+
+# --- Egresos (carpetas) ---
+EGRESOS_DIR               = UPLOADS_DIR / "egresos"
+EGRESOS_CONTABILIDAD_DIR  = EGRESOS_DIR / "contabilidad"
+SAT_HISTORIAL_DIR         = EGRESOS_DIR / "_sat_historial"

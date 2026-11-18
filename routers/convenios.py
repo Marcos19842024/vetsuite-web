@@ -540,6 +540,79 @@ def exportar_excel(
     )
 
 
+# ---------- Reportes (árbol Año → Mes → Estado) ----------
+
+@router.get("/arbol")
+def arbol_convenios():
+    """Árbol Año → Mes → Estado con conteos y montos.
+
+    Estructura:
+        {
+          "2026": {
+            "11": {
+              "borrador": {"n": 2, "total": 5000.0},
+              "pagado":   {"n": 1, "total": 1200.0},
+              "_total":   {"n": 3, "total": 6200.0}
+            },
+            "_total": {"n": 3, "total": 6200.0}
+          },
+          "_total": {"n": 3, "total": 6200.0}
+        }
+
+    El `_total` raíz es obligatorio: sin él, el footer del modal sale en 0
+    (regla 21 de CONTEXTO.md).
+    """
+    conn = get_conn()
+    filas = conn.execute("""
+        SELECT fecha, estado, monto_total
+        FROM convenios
+        WHERE fecha IS NOT NULL AND fecha != ''
+    """).fetchall()
+    conn.close()
+
+    arbol: dict = {}
+    for r in filas:
+        fecha = (r["fecha"] or "").strip()
+        if len(fecha) < 7:
+            continue
+        a = fecha[:4]          # "2026"
+        m = fecha[5:7]         # "11"
+        est = (r["estado"] or "borrador").strip().lower()
+        t = round(float(r["monto_total"] or 0), 2)
+
+        # Nivel estado
+        arbol.setdefault(a, {}) \
+             .setdefault(m, {}) \
+             .setdefault(est, {"n": 0, "total": 0.0})
+        arbol[a][m][est]["n"] += 1
+        arbol[a][m][est]["total"] = round(arbol[a][m][est]["total"] + t, 2)
+
+        # _total del mes
+        arbol[a][m].setdefault("_total", {"n": 0, "total": 0.0})
+        arbol[a][m]["_total"]["n"] += 1
+        arbol[a][m]["_total"]["total"] = round(
+            arbol[a][m]["_total"]["total"] + t, 2)
+
+        # _total del año
+        arbol[a].setdefault("_total", {"n": 0, "total": 0.0})
+        arbol[a]["_total"]["n"] += 1
+        arbol[a]["_total"]["total"] = round(
+            arbol[a]["_total"]["total"] + t, 2)
+
+    # _total raíz
+    arbol["_total"] = {
+        "n": sum(v["_total"]["n"] for k, v in arbol.items() if k != "_total"),
+        "total": round(
+            sum(v["_total"]["total"] for k, v in arbol.items() if k != "_total"),
+            2,
+        ),
+    }
+
+    resp = JSONResponse(arbol)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @router.post("/{cid}/alerta-vista")
 async def alerta_vista(cid: int):
     marcar_alerta_vista(cid)

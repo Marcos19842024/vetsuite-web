@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 
 from shared.templates_shared import templates
 
@@ -32,7 +32,7 @@ from core.recordatorios.sucursales import (
     cargar_sucursales, sucursal_activa, nombre_clinica_activa, guardar_sucursal_activa,
 )
 from core.recordatorios.procesar_excel import (
-    procesar_excel, detectar_tipo_excel, regenerar_mensajes_cliente,
+    procesar_excel, regenerar_mensajes_cliente,
 )
 from core.recordatorios.convenios_generator import generar as generar_convenios
 from core.recordatorios import historial, envio, convenios_cache

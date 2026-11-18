@@ -2,7 +2,6 @@ from core.corte_semanal.semanas import (
     lunes_de,
     dias_de,
     semana_actual as _semana_actual,
-    semana_de_fecha,
 )
 
 

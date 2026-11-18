@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).parent.parent
+from shared.rutas import ROOT as BASE_DIR
 UPLOADS = BASE_DIR / "uploads" / "egresos"
 TEMPORALES = UPLOADS / "temporales"
 XMLS = UPLOADS / "xml"

@@ -2,7 +2,6 @@
 Lector de facturas CFDI 4.0 (XML) + PDF.
 Versión web: catálogo en la raíz del proyecto, sin core.rutas.
 """
-import sys
 import re
 import json
 import xml.etree.ElementTree as ET

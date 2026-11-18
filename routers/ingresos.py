@@ -10,7 +10,6 @@ from fastapi.responses import (
 )
 
 from shared.templates_shared import templates
-
 from shared.db import get_conn
 from ingresos.lector_facturas import (
     cargar_catalogo,
@@ -32,8 +31,6 @@ from ingresos.excel_web import generar_excel
 from ingresos.zip_generador import generar_zip_mensual
 
 router = APIRouter(prefix="/ingresos", tags=["ingresos"])
-
-from shared.rutas import GMAIL_CONFIG
 
 CATEGORIAS = ["U", "ACCESORIOS", "MEDICAMENTOS", "HIGIENE",
               "ESTETICA", "TRANSPORTE", "PENSION", "VACUNA", "CLINICA"]

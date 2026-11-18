@@ -20,7 +20,8 @@ from egresos.excel_egresos import generar_excel_pue, generar_excel_ppd
 
 router = APIRouter(prefix="/egresos", tags=["egresos"])
 
-BASE_DIR = Path(__file__).parent.parent
+from shared.rutas import ROOT as BASE_DIR
+
 MESES_ES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -202,11 +203,8 @@ def _job_solicitar_sat(job_id, fecha_inicio, fecha_fin, cancelar_evt):
         jobs.actualizar_job(job_id, estado="solicitando", progreso=5)
         jobs.agregar_mensaje(job_id, "Solicitando descarga al SAT...")
 
-        cfg = sat.cargar_config()
-        rfc = cfg.get("rfc_receptor", "")
-        cer = cfg.get("certificado_cer", "")
-        key = cfg.get("certificado_key", "")
-        pwd = cfg.get("password_fiel", "")
+        fiel = sat.get_fiel()
+        rfc, cer, key, pwd = fiel["rfc"], fiel["cer"], fiel["key"], fiel["pwd"]
 
         if not all([rfc, cer, key, pwd]):
             jobs.actualizar_job(job_id, estado="error",

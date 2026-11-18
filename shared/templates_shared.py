@@ -4,7 +4,6 @@ Se importa desde main.py y desde todos los routers, para que
 los helpers globales (modulos_ip, es_admin_ip) estén disponibles
 en cualquier template que extienda base.html.
 """
-from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from core import permisos_ip

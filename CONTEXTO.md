@@ -1,7 +1,7 @@
 # VetSuite Web — Contexto del proyecto
 
-Versión: v0.9
-Última actualización: 2026-11-07
+Versión: v0.9.x
+Última actualización: 2026-11-17
 
 Documento vivo del proyecto. Refleja el estado actual de la arquitectura,
 la base de datos, los flujos y las reglas. El historial de sesiones vive en
@@ -18,6 +18,8 @@ CONTEXTO_SESION.md.
 7. Catálogo QVET
 8. Corte Semanal
 9. Servicios Externos
+9.2 Convenios de Pago
+9.3 Reportes con árbol en Convenios
 10. Observaciones por celda en Corte Semanal
 11. Ingresos: filtro de fechas, visor de archivos, re-clasificación
 12. UI: iconos, sidebar, tabla full-height
@@ -582,6 +584,92 @@ que muestra los mensajes generados automáticamente para convenios
 vencidos o por vencer, y permite enviarlos por WhatsApp con el mismo
 flujo que Citas y Vacunas.
 
+## 9.2 Convenios de Pago (/convenios)
+
+Módulo de reconocimiento de deuda con plan de pagos, impresión Carta y
+seguimiento de pagos con bloqueo por contraseña cuando hay pagos
+efectuados.
+
+### Modelo de datos
+
+Tres tablas:
+
+- `convenios` — cabecera (folio, fecha, propietario, teléfono,
+  dirección, mascota, NHC, monto_total, monto_letra, fecha_vencimiento,
+  lugar_pago, cuenta_bancaria, notas, estado).
+- `convenios_pagos` — un pago por fila (convenio_id, numero, fecha,
+  importe, efectuado, fecha_pago, albaran, factura_numero,
+  factura_uuid, tipo_pago, pagado_con_tarjeta).
+- `convenios_alertas_vistas` — marca de "visto hoy" por convenio.
+
+### Estados
+
+`borrador` → `impreso` → `firmado` → `pagado` → `cancelado`.
+
+### Reglas
+
+1. Los convenios **no llevan IVA** (servicios médicos veterinarios
+   exentos).
+2. Los pagos se guardan con **upsert por `id`**. Los efectuados nunca se
+   modifican ni se eliminan desde el formulario.
+3. El botón 🗑 vive **dentro del formulario**, no en el listado. Solo
+   aparece si `estado == 'borrador'` y no hay pagos efectuados.
+4. Cambios estructurales (monto, fecha, propietario, mascota) se
+   bloquean si hay pagos efectuados (409).
+5. La contraseña de desbloqueo es opcional (`password_hash` vacío →
+   modo abierto). En producción debe estar configurada.
+6. La búsqueda de factura solo vincula facturas a nombre del cliente
+   (no público en general). Primero por RFC, luego por nombre.
+7. El UUID de factura se llena desde `ingresos.folio_fiscal` al buscar
+   la factura del cliente.
+8. La impresión usa iframe oculto con `print()`. Fallback a pestaña
+   nueva si el navegador lo bloquea.
+9. Doble clic en fila del listado abre editar. Botones de la fila
+   tienen `event.stopPropagation()`.
+10. La celda de vencimiento se pinta rojo (`celda-vencida`) o amarillo
+    (`celda-por-vencer`) según el estado, con los días debajo.
+11. El módulo `"convenios"` debe estar en `ip_permisos.json`.
+12. El conversor `numero_a_letras` trabaja con centavos enteros para
+    evitar errores de punto flotante.
+13. Filtros híbridos: `estado`/`desde`/`hasta` server-side, `q`
+    client-side con debounce 150ms. El `q` viaja en la URL como hidden.
+14. El Excel de convenios respeta los mismos filtros que el listado.
+
+## 9.3 Reportes con árbol en Convenios
+
+El botón "Ver registros" en `/convenios` abre un modal con un árbol
+**Año → Mes → Estado**.
+
+- Endpoint: `GET /convenios/arbol`.
+- Estructura del JSON:
+
+    {
+      "2026": {
+        "11": {
+          "borrador":  {"n": 2, "total": 5000.0},
+          "impreso":   {"n": 1, "total": 1200.0},
+          "firmado":   {"n": 0, "total": 0.0},
+          "pagado":    {"n": 3, "total": 8500.0},
+          "cancelado": {"n": 0, "total": 0.0},
+          "_total":    {"n": 6, "total": 14700.0}
+        },
+        "_total": {"n": 6, "total": 14700.0}
+      },
+      "_total": {"n": 6, "total": 14700.0}
+    }
+
+- El `_total` debe existir en **cuatro niveles** (estado, mes, año,
+  raíz). Sin el de raíz, el footer del modal sale en 0.
+- Clic en un **estado**: cierra el modal y navega a
+  `/convenios?estado=<est>&desde=<YYYY-MM-01>&hasta=<último día>&q=`.
+  Respeta los filtros híbridos del listado.
+- Clic en **año** o **mes**: solo expande/colapsa (no navega).
+- El endpoint manda `Cache-Control: no-store`.
+- Los estilos se reutilizan de Egresos / Servicios Externos
+  (`.arbol-reportes`, `.nodo-sucursal-btn`, `.nodo-hoja`).
+- `window.abrirModalReportes = abrirModalReportes` al final del
+  `<script>`.
+
 ### Generación
 
 - Un **job diario** (thread daemon en `shared/jobs_convenios.py`) corre
@@ -609,7 +697,6 @@ Hola {propietario}, le saludamos de Clínica Veterinaria Baalak.
 Le recordamos que tiene un convenio de pago pendiente por {mascota}
 con saldo de ${pendiente}, que venció el {fecha_vencimiento}.
 Le agradecemos pasar a recepción o comunicarse para regularizar.
-
 
 **Por vencer:**
 Hola {propietario}, le saludamos de Clínica Veterinaria Baalak.
@@ -1305,3 +1392,58 @@ IVA, pero el módulo no hace ese desglose (no es el caso de uso).
     - Pide confirmación con `confirm()`.
     - Redirige al listado tras eliminar.
     - El endpoint `POST /convenios/{cid}/eliminar` ya valida las reglas en backend.
+
+## 17. Deuda técnica resuelta (2026-11-17)
+
+### 17.1 Rutas centralizadas
+
+Todos los `Path(__file__)` del proyecto (fuera de `shared/rutas.py` y de
+los `scripts/`) fueron reemplazados por constantes de `shared.rutas`:
+
+- `ROOT` — raíz del proyecto (usado en `main.py`, `routers/egresos.py`,
+  `routers/rechazados.py`, `core/rutas_recordatorios.py`,
+  `core/corte_semanal/excel_corte.py`, `egresos/manager.py`,
+  `sat/procesar_xml.py`).
+- `CORTE_SEMANAL_DIR` — `uploads/corte_semanal/` (`routers/corte_semanal.py`).
+- `SAT_HISTORIAL_DIR` — `uploads/egresos/_sat_historial/` (`core/sat_historial.py`).
+- `EGRESOS_DIR` / `EGRESOS_CONTABILIDAD_DIR` — carpetas de Egresos
+  (`core/rutas_egresos.py`).
+- `CONFIG_EGRESOS` — alias de `EGRESOS_CONFIG` (ver 17.2).
+
+**Excepción:** los `scripts/*.py` conservan su `Path(__file__)` porque es
+bootstrap de `sys.path`, no una ruta de datos.
+
+### 17.2 Config de Egresos consolidada
+
+Antes había dos módulos que leían **archivos distintos**:
+
+- `egresos/config_egresos.py` → `json/config_egresos.json` (fantasma).
+- `egresos/sat_wrapper.py` → `json/egresos_config.json` (real).
+
+Ahora:
+
+- **Un solo archivo:** `json/egresos_config.json`.
+- **Un solo módulo de config:** `egresos/config_egresos.py`.
+- `sat_wrapper.py` importa de `config_egresos` y ya no duplica
+  `cargar_config`, `cargar_solicitud_activa`, `cargar_proveedores_sucursal`,
+  etc.
+- `CONFIG_EGRESOS` en `shared.rutas` quedó como alias de
+  `EGRESOS_CONFIG` para no romper imports viejos.
+- Nuevo helper `get_fiel()` en `config_egresos.py` que devuelve
+  `{rfc, cer, key, pwd}` listo para `sat.descarga`.
+- `core/sat_historial.py` ahora usa `historial_sat_activo()` de
+  `config_egresos.py`, que respeta `VET_SUITE_HISTORIAL=1` además del
+  JSON.
+
+### Reglas nuevas
+
+1. Todo `Path(__file__)` de datos vive en `shared/rutas.py`. El resto del
+   código importa constantes.
+2. `json/egresos_config.json` es el único archivo de config de Egresos.
+   `CONFIG_EGRESOS` es alias de `EGRESOS_CONFIG`.
+3. `sat_wrapper.py` no lee JSON; solo importa de `config_egresos.py`.
+4. `sat_wrapper.py` reexporta `cargar_config`, `guardar_config`,
+   `cargar_solicitud_activa`, etc. con alias para compatibilidad.
+5. Los `scripts/*.py` conservan su `Path(__file__)` de bootstrap.
+6. `core/sat_historial.py` usa `historial_sat_activo()` de
+   `config_egresos.py`.

@@ -9,9 +9,10 @@ from datetime import date
 from pathlib import Path
 
 from openpyxl import load_workbook
+from shared.rutas import ROOT
 
 RUTA_PLANTILLA = (
-    Path(__file__).resolve().parents[2]
+    ROOT
     / "uploads"
     / "corte_semanal"
     / "plantilla_semanal.xlsx"
@@ -138,18 +139,28 @@ def generar_excel(anio: int, semana: int, dias: list[str], datos: dict) -> Bytes
     ws = wb.active
 
     # Nombre de la hoja
+    assert ws is not None
     ws.title = nombre_hoja(dias)
 
     # Actualizar fila de fechas de cada sucursal
     for sucursal in ["Baalak", "Prado"]:
         fila_fechas = _fila(sucursal, "fechas")
-        for i, fecha_iso in enumerate(dias):
-            col = COL_LUNES + i
-            celda = ws.cell(row=fila_fechas, column=col)
-            try:
-                celda.value = date.fromisoformat(fecha_iso)
-            except Exception:
-                celda.value = fecha_iso
+        # Hay 3 filas de fecha por sucursal:
+        #   fechas     -> fila 4  / 43  (bloque Ingreso)
+        #   egreso_cab -> fila 13 / 52  (bloque Egreso)
+        #   pc_cab     -> fila 24 / 63  (bloque Por Cobrar)
+        CLAVES_FECHA = ["fechas", "egreso_cab", "pc_cab"]
+
+        for sucursal in ["Baalak", "Prado"]:
+            for clave in CLAVES_FECHA:
+                fila = _fila(sucursal, clave)
+                for i, fecha_iso in enumerate(dias):
+                    col = COL_LUNES + i
+                    celda = ws.cell(row=fila, column=col)
+                    try:
+                        celda.value = date.fromisoformat(fecha_iso) # type: ignore
+                    except Exception:
+                        celda.value = fecha_iso # type: ignore
 
     # Rellenar datos
     for sucursal in ["Baalak", "Prado"]:

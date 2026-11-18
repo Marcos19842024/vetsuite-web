@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from shared.rutas import IP_PERMISOS as RUTA
 

@@ -27,7 +27,6 @@ se calcula al vuelo en la tabla y en el Excel.
 """
 
 import shutil
-from datetime import datetime
 from pathlib import Path
 
 from shared.campos import MESES_ES

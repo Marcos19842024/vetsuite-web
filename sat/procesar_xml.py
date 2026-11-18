@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 # Agregar la raíz del proyecto al path
-_raiz = Path(__file__).parent.parent
+from shared.rutas import ROOT as _raiz
 if str(_raiz) not in sys.path:
     sys.path.insert(0, str(_raiz))
     

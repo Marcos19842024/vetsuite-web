@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 # Raíz del proyecto web (vetsuite_web/)
-BASE_DIR = Path(__file__).resolve().parent.parent
+from shared.rutas import ROOT as BASE_DIR
 
 CARPETA_DATOS    = BASE_DIR / "uploads" / "recordatorios"
 CARPETA_REPORTES = BASE_DIR / "uploads" / "recordatorios" / "reportes"
