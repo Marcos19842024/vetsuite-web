@@ -1002,3 +1002,73 @@ textarea.corte-obs {
   background-color: #e9ecef;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   Cuentas por Cobrar — Chips de estado
+   ============================================================ */
+.chip-estado { display:inline-block; padding:.15rem .5rem; border-radius:.25rem; font-size:.75rem; font-weight:600; }
+.chip-pendiente     { background:#e9ecef; color:#495057; }
+.chip-asignada      { background:#dbeafe; color:#1e40af; }
+.chip-contactado    { background:#cfe2ff; color:#084298; }
+.chip-promesa_pago  { background:#fff3cd; color:#856404; }
+.chip-pagado        { background:#d1e7dd; color:#0f5132; }
+.chip-no_localizado { background:#ffe5d0; color:#984c0c; }
+.chip-disputa       { background:#f8d7da; color:#842029; }
+.chip-cancelado     { background:#495057; color:#fff; }
+.chip-institucional { background:#e9ecef; color:#6c757d; }
+.chip-convenio      { background:#0d6efd; color:#fff; }
+
+/* ============================================================
+   Cuentas por Cobrar — Semáforo de antigüedad
+   ============================================================ */
+.dot-semaforo { display:inline-block; width:.7rem; height:.7rem; border-radius:50%; margin-right:.35rem; }
+.dot-verde    { background:#198754; }
+.dot-amarillo { background:#ffc107; }
+.dot-naranja  { background:#fd7e14; }
+.dot-rojo     { background:#dc3545; }
+
+/* ============================================================
+   Cuentas por Cobrar — Filas atenuadas
+   ============================================================ */
+.fila-institucional { opacity:.55; }
+.fila-convenio      { opacity:.7; }
+.fila-pagado        { opacity:.5; }
+
+/* ============================================================
+   Cuentas por Cobrar — Modal de detalle
+   Header y footer fijos, body con scroll interno.
+   ============================================================ */
+dialog#modal-detalle[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: 92vh;
+  height: 90vh;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  border-radius: .5rem;
+  background: var(--tblr-bg-surface, #ffffff);
+  max-width: 1100px;
+  width: 95vw;
+}
+
+dialog#modal-detalle .modal-header {
+  flex: 0 0 auto;              /* no crece, no se encoge */
+  border-bottom: 1px solid #dee2e6;
+  background: var(--tblr-bg-surface, #ffffff);
+  z-index: 2;
+}
+
+dialog#modal-detalle .modal-body {
+  flex: 1 1 auto;              /* ocupa el espacio disponible */
+  overflow-y: auto;
+  min-height: 0;               /* clave para que flexbox permita el scroll */
+}
+
+dialog#modal-detalle .modal-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--tblr-bg-surface, #ffffff);
+  border-top: 1px solid #dee2e6;
+  z-index: 2;
+}

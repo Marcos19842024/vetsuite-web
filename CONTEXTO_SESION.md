@@ -1,3 +1,146 @@
+# Sesión de trabajo — 2026-11-19/20 (VetSuite Web v0.9.x — Recordatorios: pestaña Libres)
+
+## Resumen
+
+Se agregó a Recordatorios una pestaña **"Libres"** para enviar mensajes
+con plantillas editables (estilo Meta/WhatsApp Business). La pestaña es
+idéntica en UX a Citas / Vacunas / Convenios: tabla, selección por clic,
+botón Enviar global, doble clic para ver el mensaje.
+
+Se completó:
+- Tabla `plantillas_libres` en `shared/db.py` (soft-delete).
+- `core/recordatorios/plantillas.py` — CRUD + `renderizar()`.
+- `core/recordatorios/clientes_libres.py` — cache JSON.
+- `core/recordatorios/parser_clientes_libres.py` — parser de Excel.
+- `core/rutas_recordatorios.py` → `LIBRES_CLIENTES_CACHE`.
+- `routers/recordatorios.py` → endpoints unificados (`whatsapp`,
+  `marcar`, `desmarcar` aceptan `tipo=libres`), `index()` con
+  `libres_rich`, exportación Excel con 4 hojas.
+- `templates/recordatorios.html` → pestaña Libres, modal de plantillas,
+  botón "Gestionar plantillas" contextual, Reset movido a la barra,
+  badge de plantilla activa con `text-white`.
+
+## Decisiones de diseño
+
+- Persistencia:
+  - Clientes libres → JSON (`uploads/recordatorios/libres_clientes.json`).
+  - Plantillas → SQLite (`plantillas_libres`), porque es CRUD con `id`.
+  - Historial → JSON compartido con citas/vacunas/convenios (`tipo="libres"`).
+- Endpoints genéricos: `whatsapp`, `marcar`, `desmarcar` aceptan
+  `tipo=libres`, sin duplicar rutas.
+- El "enviado" se marca por **mensaje exacto** (`tel|tipo|hash(mensaje)`),
+  así el usuario puede enviar distintas plantillas al mismo cliente.
+- La plantilla activa vive en `localStorage` y se pasa por query param
+  `?plantilla_libres=<id>` al `index`.
+- Reset **no** borra plantillas.
+- UI: la pestaña Libres es idéntica a las otras (tabla, selección por
+  clic, botón Enviar global, doble clic para ver mensaje).
+
+## Archivos nuevos
+
+- `core/recordatorios/plantillas.py`
+- `core/recordatorios/clientes_libres.py`
+- `core/recordatorios/parser_clientes_libres.py`
+
+## Archivos modificados
+
+- `shared/db.py` → `CREATE TABLE plantillas_libres`
+- `core/rutas_recordatorios.py` → `LIBRES_CLIENTES_CACHE`
+- `routers/recordatorios.py` → endpoints unificados, `index()` con
+  `libres_rich`, exportación Excel con 4 hojas (Citas, Vacunas,
+  Convenios, Libres)
+- `templates/recordatorios.html` → pestaña Libres, modal de plantillas,
+  botón "Gestionar plantillas" contextual, Reset movido a la barra,
+  badge de plantilla activa con `text-white`
+
+## Inconsistencias resueltas
+
+- Libres contaba como enviado con cualquier plantilla → ahora por mensaje
+  exacto.
+- Reset borraba plantillas (contradecía el mensaje del `confirm`) → ahora
+  no.
+- Badge de plantilla activa tenía texto oscuro sobre fondo azul → se
+  agregó `text-white`.
+- `formImport.addEventListener` duplicado → unificado.
+- `STATS` vs `STATS_TAB` inconsistente → renombrado a `STATS_TAB`.
+- `_telefonos_enviados_por_tipo` se usaba para la tabla → ahora solo para
+  el Excel (resumen histórico).
+- `index()` consultaba el historial dentro del loop de clientes → ahora
+  una sola lectura.
+
+## Estado actual
+
+### Funcional
+- ✅ Pestaña Libres con plantillas editables.
+- ✅ Reset conserva plantillas.
+- ✅ Exportar Excel con 4 hojas.
+- ✅ Todos los módulos anteriores siguen funcionando.
+
+### Pendiente (Libres)
+- 📝 Tests del CRUD de plantillas.
+- 📝 Tests del parser de clientes.
+- 📝 Sincronizar plantilla activa entre pestañas del navegador.
+
+## Cómo trabajar
+
+- Arrancar: `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
+- Probar: `http://127.0.0.1:8000/recordatorios` → tab Libres.
+- Importar Excel de clientes: botón "Importar listas" en la barra.
+- Crear/editar plantillas: "Más" o "Gestionar plantillas" (solo en Libres).
+- Enviar: seleccionar cliente en la tabla → botón "Enviar".
+
+## Reglas nuevas (Recordatorios / Libres)
+
+93. v0.9.x: la pestaña Libres usa plantillas de la tabla
+    `plantillas_libres` (SQLite). El Reset **no** las borra.
+94. v0.9.x: el "enviado" de Libres se marca por `hash(mensaje)`. Cambiar
+    de plantilla desmarca a los clientes ya enviados con otra.
+95. v0.9.x: la plantilla activa de Libres vive en `localStorage`
+    (`vetsuite.recordatorios.plantilla_libres`) y se pasa al backend por
+    `?plantilla_libres=<id>`.
+96. v0.9.x: `whatsapp`, `marcar` y `desmarcar` son genéricos
+    (`{tipo}` = `citas|vacunas|libres`). No hay endpoints duplicados.
+97. v0.9.x: el parser de Excel de clientes libres
+    (`parsear_excel_clientes`) acepta columnas de teléfono con prefijos
+    (`TELÉFONO1`, `TELÉFONO SMS`, etc.) y normaliza formatos sucios.
+98. v0.9.x: el Excel de Recordatorios tiene 4 hojas: Citas, Vacunas,
+    Convenios, Libres.
+99. v0.9.x: el botón "Gestionar plantillas" solo es visible en la
+    pestaña Libres.
+100. v0.9.x: el badge de plantilla activa usa `bg-primary text-white`.
+118. v0.10.x: Los estilos de Cuentas por Cobrar viven en
+     static/style.css (sección "Cuentas por Cobrar"). El template
+     no lleva <style> inline salvo casos muy puntuales (ej. un
+     ancho específico de un modal que no se reusa). Los chips,
+     semáforos y filas atenuadas son reutilizables: si otro módulo
+     los necesita, se reusan las mismas clases.
+119. v0.10.x: El cruce CPC ↔ Convenios es por nombre normalizado
+     (mayúsculas, sin acentos, sin puntos, colapsando espacios).
+     Los estados activos son 'firmado' e 'impreso'.
+120. v0.10.x: Los clientes institucionales no se cruzan con convenios.
+121. v0.10.x: Si un cliente tenía convenio activo y se cancela, el
+     siguiente cruce lo desmarca y regresa el estado a 'pendiente'
+     (solo si el estado actual era 'convenio').
+122. v0.10.x: El cruce corre automáticamente al final de /importar y
+     manualmente con el botón "Reverificar convenios".
+123. v0.10.x: Las transiciones de estado de convenios son:
+     - borrador  → impreso, cancelado
+     - impreso   → firmado, borrador, cancelado
+     - firmado   → pagado, cancelado
+     - pagado    → (terminal, no permite cambios)
+     - cancelado → (terminal, no permite cambios)
+124. v0.10.x: No se puede pasar a 'pagado' si hay pagos pendientes
+     (validado en backend, 409).
+125. v0.10.x: Los estados 'pagado' y 'cancelado' son terminales: no
+     permiten transición a otro estado. Si se intenta, el backend
+     devuelve 409.
+126. v0.10.x: El endpoint /convenios/{cid}/estado valida las
+     transiciones con `_validar_transicion()` y devuelve 409 con
+     mensaje descriptivo si la transición no es válida.
+127. v0.10.x: El selector de estado en el formulario deshabilita las
+     opciones no permitidas según el estado actual. Si el usuario
+     cancela el confirm, el select revierte al estado anterior.
+
 # Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — deuda técnica del refactor)
 
 ## Resumen

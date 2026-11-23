@@ -23,6 +23,24 @@ from shared.templates_shared import templates
 
 router = APIRouter(prefix="/convenios", tags=["convenios"])
 
+ESTADOS_VALIDOS = ("borrador", "impreso", "firmado", "pagado", "cancelado")
+
+TRANSICIONES_PERMITIDAS = {
+    "borrador":  {"impreso", "cancelado"},
+    "impreso":   {"firmado", "borrador", "cancelado"},
+    "firmado":   {"pagado", "cancelado"},
+    "pagado":    set(),          # estado terminal
+    "cancelado": set(),          # estado terminal
+}
+
+# Etiquetas legibles para mensajes de error
+ESTADO_LABEL = {
+    "borrador":  "Borrador",
+    "impreso":   "Impreso",
+    "firmado":   "Firmado",
+    "pagado":    "Pagado",
+    "cancelado": "Cancelado",
+}
 
 def _cfg() -> dict:
     try:
@@ -31,6 +49,39 @@ def _cfg() -> dict:
     except Exception:
         return {"clinica": {}, "alertas": {"dias_por_vencer": 3}, "seguridad": {}}
 
+
+def _validar_transicion(conn, cid: int, estado_actual: str, nuevo_estado: str) -> tuple[bool, str]:
+    """
+    Valida si se puede pasar de estado_actual a nuevo_estado.
+    Devuelve (ok, mensaje_error).
+    """
+    if nuevo_estado not in ESTADOS_VALIDOS:
+        return False, "Estado inválido."
+
+    if nuevo_estado == estado_actual:
+        return True, ""
+
+    # Estados terminales no permiten transición
+    if estado_actual in ("pagado", "cancelado"):
+        return False, f"El convenio está {ESTADO_LABEL[estado_actual].lower()} y no se puede modificar su estado."
+
+    # Validar que la transición esté permitida
+    if nuevo_estado not in TRANSICIONES_PERMITIDAS.get(estado_actual, set()):
+        return False, (
+            f"No se puede pasar de '{ESTADO_LABEL.get(estado_actual, estado_actual)}' "
+            f"a '{ESTADO_LABEL.get(nuevo_estado, nuevo_estado)}'."
+        )
+
+    # Regla especial: no se puede pasar a 'pagado' si hay pagos pendientes
+    if nuevo_estado == "pagado":
+        est = calcular_estado_pago(conn, cid)
+        if est["pendiente"] > 0.01:
+            return False, (
+                f"No se puede marcar como pagado: quedan ${est['pendiente']:.2f} pendientes "
+                f"de ${est['total']:.2f}."
+            )
+
+    return True, ""
 
 @router.get("/numero-a-letras")
 def numero_a_letras_endpoint(monto: float = 0):
@@ -165,136 +216,163 @@ def buscar_cliente(q: str = "", rfc: str = ""):
 async def guardar(request: Request):
     data = await request.json()
     conn = get_conn()
-    cid = data.get("id")
+    try:
+        cid = data.get("id")
 
-    total = float(data.get("monto_total") or 0)
-    letra = data.get("monto_letra") or numero_a_letras(total)
-    pagos = data.get("pagos") or []
-    suma_pagos = sum(float(p.get("importe") or 0) for p in pagos)
+        total = float(data.get("monto_total") or 0)
+        letra = data.get("monto_letra") or numero_a_letras(total)
+        pagos = data.get("pagos") or []
+        suma_pagos = sum(float(p.get("importe") or 0) for p in pagos)
 
-    if pagos and abs(suma_pagos - total) > 0.01:
-        conn.close()
-        return JSONResponse(
-            {"ok": False, "error": f"La suma de pagos (${suma_pagos:.2f}) no coincide con el total (${total:.2f})."},
-            status_code=400,
-        )
-
-    # --- Verificación de seguridad si ya hay pagos efectuados ---
-    if cid and convenio_tiene_pagos_efectuados(conn, cid):
-        if password_configurada() and not verificar_password(data.get("password", "")):
-            conn.close()
+        if pagos and abs(suma_pagos - total) > 0.01:
             return JSONResponse(
-                {"ok": False, "error": "Se requiere contraseña para modificar un convenio con pagos efectuados."},
-                status_code=401,
+                {"ok": False, "error": f"La suma de pagos (${suma_pagos:.2f}) no coincide con el total (${total:.2f})."},
+                status_code=400,
             )
-        conv_actual = conn.execute(
-            "SELECT monto_total, fecha, propietario, mascota FROM convenios WHERE id=?",
-            (cid,),
-        ).fetchone()
-        if conv_actual:
-            if (abs(float(data.get("monto_total") or 0) - float(conv_actual["monto_total"])) > 0.01 or
-                data.get("fecha") != conv_actual["fecha"] or
-                data.get("propietario") != conv_actual["propietario"] or
-                data.get("mascota") != conv_actual["mascota"]):
-                conn.close()
+
+        # --- Verificaciones para convenios existentes ---
+        if cid:
+            conv_actual = conn.execute(
+                "SELECT estado, monto_total, fecha, propietario, mascota FROM convenios WHERE id=?",
+                (cid,),
+            ).fetchone()
+            if not conv_actual:
                 return JSONResponse(
-                    {"ok": False, "error": "No puedes modificar monto, fecha, propietario ni mascota cuando hay pagos efectuados."},
-                    status_code=409,
+                    {"ok": False, "error": "Convenio no encontrado."},
+                    status_code=404,
                 )
 
-    # --- Datos del convenio ---
-    campos = (
-        data.get("fecha", datetime.date.today().isoformat()),
-        data.get("propietario", ""),
-        data.get("telefono", ""),
-        data.get("direccion", ""),
-        data.get("mascota", ""),
-        data.get("nhc", ""),
-        total,
-        letra,
-        data.get("fecha_vencimiento", ""),
-        data.get("lugar_pago", "recepcion"),
-        data.get("cuenta_bancaria", ""),
-        data.get("notas", ""),
-    )
-    if cid:
-        conn.execute(
-            """UPDATE convenios SET fecha=?, propietario=?, telefono=?,
-               direccion=?, mascota=?, nhc=?, monto_total=?, monto_letra=?,
-               fecha_vencimiento=?, lugar_pago=?, cuenta_bancaria=?, notas=?,
-               actualizado_en=CURRENT_TIMESTAMP
-               WHERE id=?""",
-            campos + (cid,),
-        )
-    else:
-        folio = generar_folio(conn)
-        cur = conn.execute(
-            """INSERT INTO convenios
-               (fecha, propietario, telefono, direccion, mascota, nhc,
-                monto_total, monto_letra, fecha_vencimiento, lugar_pago,
-                cuenta_bancaria, notas, folio)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            campos + (folio,),
-        )
-        cid = cur.lastrowid
+            estado_actual = conv_actual["estado"]
 
-    # --- Upsert de pagos (respeta los efectuados) ---
-    pagos_existentes = {
-        r["id"]: dict(r)
-        for r in conn.execute(
-            "SELECT * FROM convenios_pagos WHERE convenio_id=?", (cid,)
-        ).fetchall()
-    }
+            # 1) Estados terminales: no se puede modificar nada estructural
+            if estado_actual in ("pagado", "cancelado"):
+                cambio_estructural = (
+                    abs(total - float(conv_actual["monto_total"])) > 0.01
+                    or data.get("fecha") != conv_actual["fecha"]
+                    or data.get("propietario") != conv_actual["propietario"]
+                    or data.get("mascota") != conv_actual["mascota"]
+                )
+                if cambio_estructural:
+                    return JSONResponse(
+                        {"ok": False, "error": f"No se puede modificar un convenio en estado '{estado_actual}'. Solo puedes marcar/desmarcar pagos."},
+                        status_code=409,
+                    )
 
-    ids_enviados = set()
-    for i, p in enumerate(pagos, 1):
-        pid = p.get("id")
-        if pid and pid in pagos_existentes:
-            ids_enviados.add(pid)
-            existente = pagos_existentes[pid]
-            if existente["efectuado"]:
-                # No se toca un pago efectuado
-                continue
+            # 2) Si hay pagos efectuados, se requiere contraseña y no se puede
+            #    cambiar monto/fecha/propietario/mascota (regla 75).
+            if convenio_tiene_pagos_efectuados(conn, cid):
+                if password_configurada() and not verificar_password(data.get("password", "")):
+                    return JSONResponse(
+                        {"ok": False, "error": "Se requiere contraseña para modificar un convenio con pagos efectuados."},
+                        status_code=401,
+                    )
+                cambio_estructural = (
+                    abs(total - float(conv_actual["monto_total"])) > 0.01
+                    or data.get("fecha") != conv_actual["fecha"]
+                    or data.get("propietario") != conv_actual["propietario"]
+                    or data.get("mascota") != conv_actual["mascota"]
+                )
+                if cambio_estructural:
+                    return JSONResponse(
+                        {"ok": False, "error": "No puedes modificar monto, fecha, propietario ni mascota cuando hay pagos efectuados."},
+                        status_code=409,
+                    )
+
+        # --- Datos del convenio ---
+        campos = (
+            data.get("fecha", datetime.date.today().isoformat()),
+            data.get("propietario", ""),
+            data.get("telefono", ""),
+            data.get("direccion", ""),
+            data.get("mascota", ""),
+            data.get("nhc", ""),
+            total,
+            letra,
+            data.get("fecha_vencimiento", ""),
+            data.get("lugar_pago", "recepcion"),
+            data.get("cuenta_bancaria", ""),
+            data.get("notas", ""),
+        )
+
+        if cid:
             conn.execute(
-                """UPDATE convenios_pagos SET numero=?, fecha=?, importe=?,
-                   efectuado=?, fecha_pago=?, albaran=?, factura_numero=?,
-                   factura_uuid=?, tipo_pago=?, pagado_con_tarjeta=?
+                """UPDATE convenios SET fecha=?, propietario=?, telefono=?,
+                   direccion=?, mascota=?, nhc=?, monto_total=?, monto_letra=?,
+                   fecha_vencimiento=?, lugar_pago=?, cuenta_bancaria=?, notas=?,
+                   actualizado_en=CURRENT_TIMESTAMP
                    WHERE id=?""",
-                (
-                    i, p.get("fecha", ""), float(p.get("importe") or 0),
-                    1 if p.get("efectuado") else 0,
-                    p.get("fecha_pago", "") if p.get("efectuado") else "",
-                    p.get("albaran", ""), p.get("factura_numero", ""),
-                    p.get("factura_uuid", ""), p.get("tipo_pago", ""),
-                    1 if p.get("pagado_con_tarjeta") else 0,
-                    pid,
-                ),
+                campos + (cid,),
             )
         else:
+            folio = generar_folio(conn)
             cur = conn.execute(
-                """INSERT INTO convenios_pagos
-                   (convenio_id, numero, fecha, importe, efectuado, fecha_pago,
-                    albaran, factura_numero, factura_uuid, tipo_pago, pagado_con_tarjeta)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    cid, i, p.get("fecha", ""), float(p.get("importe") or 0),
-                    1 if p.get("efectuado") else 0,
-                    p.get("fecha_pago", "") if p.get("efectuado") else "",
-                    p.get("albaran", ""), p.get("factura_numero", ""),
-                    p.get("factura_uuid", ""), p.get("tipo_pago", ""),
-                    1 if p.get("pagado_con_tarjeta") else 0,
-                ),
+                """INSERT INTO convenios
+                   (fecha, propietario, telefono, direccion, mascota, nhc,
+                    monto_total, monto_letra, fecha_vencimiento, lugar_pago,
+                    cuenta_bancaria, notas, folio)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                campos + (folio,),
             )
-            ids_enviados.add(cur.lastrowid)
+            cid = cur.lastrowid
 
-    # Borrar los que ya no vienen en el payload (solo si no están efectuados)
-    for pid, p in pagos_existentes.items():
-        if pid not in ids_enviados and not p["efectuado"]:
-            conn.execute("DELETE FROM convenios_pagos WHERE id=?", (pid,))
+        # --- Upsert de pagos (respeta los efectuados) ---
+        pagos_existentes = {
+            r["id"]: dict(r)
+            for r in conn.execute(
+                "SELECT * FROM convenios_pagos WHERE convenio_id=?", (cid,)
+            ).fetchall()
+        }
 
-    conn.commit()
-    conn.close()
-    return JSONResponse({"ok": True, "id": cid})
+        ids_enviados = set()
+        for i, p in enumerate(pagos, 1):
+            pid = p.get("id")
+            if pid and pid in pagos_existentes:
+                ids_enviados.add(pid)
+                existente = pagos_existentes[pid]
+                if existente["efectuado"]:
+                    # No se toca un pago efectuado
+                    continue
+                conn.execute(
+                    """UPDATE convenios_pagos SET numero=?, fecha=?, importe=?,
+                       efectuado=?, fecha_pago=?, albaran=?, factura_numero=?,
+                       factura_uuid=?, tipo_pago=?, pagado_con_tarjeta=?
+                       WHERE id=?""",
+                    (
+                        i, p.get("fecha", ""), float(p.get("importe") or 0),
+                        1 if p.get("efectuado") else 0,
+                        p.get("fecha_pago", "") if p.get("efectuado") else "",
+                        p.get("albaran", ""), p.get("factura_numero", ""),
+                        p.get("factura_uuid", ""), p.get("tipo_pago", ""),
+                        1 if p.get("pagado_con_tarjeta") else 0,
+                        pid,
+                    ),
+                )
+            else:
+                cur = conn.execute(
+                    """INSERT INTO convenios_pagos
+                       (convenio_id, numero, fecha, importe, efectuado, fecha_pago,
+                        albaran, factura_numero, factura_uuid, tipo_pago, pagado_con_tarjeta)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        cid, i, p.get("fecha", ""), float(p.get("importe") or 0),
+                        1 if p.get("efectuado") else 0,
+                        p.get("fecha_pago", "") if p.get("efectuado") else "",
+                        p.get("albaran", ""), p.get("factura_numero", ""),
+                        p.get("factura_uuid", ""), p.get("tipo_pago", ""),
+                        1 if p.get("pagado_con_tarjeta") else 0,
+                    ),
+                )
+                ids_enviados.add(cur.lastrowid)
+
+        # Borrar los que ya no vienen en el payload (solo si no están efectuados)
+        for pid, p in pagos_existentes.items():
+            if pid not in ids_enviados and not p["efectuado"]:
+                conn.execute("DELETE FROM convenios_pagos WHERE id=?", (pid,))
+
+        conn.commit()
+        return JSONResponse({"ok": True, "id": cid})
+    finally:
+        conn.close()
 
 
 # ---------- Imprimir ----------
@@ -327,43 +405,75 @@ def imprimir(cid: int, request: Request):
 @router.post("/{cid}/estado")
 async def cambiar_estado(cid: int, request: Request):
     data = await request.json()
-    estado = data.get("estado", "borrador")
-    if estado not in ("borrador", "impreso", "firmado", "pagado", "cancelado"):
-        return JSONResponse({"ok": False, "error": "Estado inválido"}, status_code=400)
+    nuevo_estado = (data.get("estado") or "").strip()
+
     conn = get_conn()
-    conn.execute(
-        "UPDATE convenios SET estado=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
-        (estado, cid),
-    )
-    conn.commit()
-    conn.close()
-    return JSONResponse({"ok": True})
+    try:
+        conv = conn.execute("SELECT estado FROM convenios WHERE id=?", (cid,)).fetchone()
+        if not conv:
+            return JSONResponse(
+                {"ok": False, "error": "Convenio no encontrado."},
+                status_code=404,
+            )
+
+        estado_actual = (conv["estado"] or "borrador").strip()
+
+        ok, error = _validar_transicion(conn, cid, estado_actual, nuevo_estado)
+        if not ok:
+            return JSONResponse({"ok": False, "error": error}, status_code=409)
+
+        conn.execute(
+            "UPDATE convenios SET estado=?, actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
+            (nuevo_estado, cid),
+        )
+        conn.commit()
+        return JSONResponse({
+            "ok": True,
+            "estado_anterior": estado_actual,
+            "estado_nuevo": nuevo_estado,
+        })
+    finally:
+        conn.close()
 
 
 @router.post("/{cid}/pago/{pid}/marcar")
 async def marcar_pago(cid: int, pid: int, request: Request):
     data = await request.json()
     efectuado = 1 if data.get("efectuado") else 0
+
     conn = get_conn()
-    conn.execute(
-        "UPDATE convenios_pagos SET efectuado=?, fecha_pago=? WHERE id=? AND convenio_id=?",
-        (
-            efectuado,
-            datetime.date.today().isoformat() if efectuado else "",
-            pid,
-            cid,
-        ),
-    )
-    conn.commit()
-    est = calcular_estado_pago(conn, cid)
-    if est["pendiente"] <= 0.01 and est["n_pagos"] > 0:
+    try:
+        # Verificar que el convenio no esté cancelado
+        conv = conn.execute("SELECT estado FROM convenios WHERE id=?", (cid,)).fetchone()
+        if not conv:
+            return JSONResponse({"ok": False, "error": "Convenio no encontrado."}, status_code=404)
+        if conv["estado"] == "cancelado":
+            return JSONResponse(
+                {"ok": False, "error": "No se puede modificar un convenio cancelado."},
+                status_code=409,
+            )
+
         conn.execute(
-            "UPDATE convenios SET estado='pagado', actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
-            (cid,),
+            "UPDATE convenios_pagos SET efectuado=?, fecha_pago=? WHERE id=? AND convenio_id=?",
+            (
+                efectuado,
+                datetime.date.today().isoformat() if efectuado else "",
+                pid,
+                cid,
+            ),
         )
+
+        est = calcular_estado_pago(conn, cid)
+        if est["pendiente"] <= 0.01 and est["n_pagos"] > 0 and conv["estado"] != "pagado":
+            conn.execute(
+                "UPDATE convenios SET estado='pagado', actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
+                (cid,),
+            )
+
         conn.commit()
-    conn.close()
-    return JSONResponse({"ok": True, "estado_pago": est})
+        return JSONResponse({"ok": True, "estado_pago": est})
+    finally:
+        conn.close()
 
 
 @router.post("/{cid}/eliminar")

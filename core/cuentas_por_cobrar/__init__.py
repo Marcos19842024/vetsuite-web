@@ -1,0 +1,1 @@
+# core/cuentas_por_cobrar/__init__.py

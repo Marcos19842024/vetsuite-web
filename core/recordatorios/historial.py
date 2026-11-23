@@ -58,3 +58,11 @@ def desmarcar_enviado(telefono: str, tipo: str) -> None:
 
 def listar_envios() -> list:
     return _cargar()["envios"]
+
+def fue_enviado_alguna_vez(telefono: str, tipo: str) -> bool:
+    """True si el teléfono ya tiene algún envío con ese tipo (cualquier mensaje)."""
+    data = _cargar()  # o como se llame tu loader interno
+    for item in data:
+        if item.get("telefono") == telefono and item.get("tipo") == tipo:
+            return True
+    return False

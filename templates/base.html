@@ -77,6 +77,15 @@
                             </li>
                         {% endif %}
 
+                        {% if 'cuentas por cobrar' in __mods %}
+                            <li class="nav-item {% if request.url.path.startswith('/cuentas_por_cobrar') %}active{% endif %}">
+                                <a class="nav-link" href="/cuentas_por_cobrar">
+                                    <span class="nav-link-icon"><i class="ti ti-cash-banknote" style="font-size: 1.25rem;"></i></span>
+                                    <span class="nav-link-title">Cuentas por Cobrar</span>
+                                </a>
+                            </li>
+                        {% endif %}
+
                         {% if es_admin_ip(request) %}
                             <li class="nav-item {% if request.url.path.startswith('/admin_ips') %}active{% endif %}">
                                 <a class="nav-link" href="/admin_ips">

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Catálogo QVET{% endblock %}
+{% block title %}Catálogo{% endblock %}
 {% block content %}
 <!-- Header -->
 <div class="page-header mb-3">
     <div class="row align-items-center">
         <div class="col">
-            <h2 class="page-title">Catálogo QVET</h2>
+            <h2 class="page-title">Catálogo</h2>
             <div class="text-muted small">
                 {{ total }} productos ({{ total_base }} base · {{ total_manual }} corregidos/agregados)
             </div>
@@ -88,7 +88,7 @@
                         {% if it.origen == 'manual' %}
                             <span class="badge bg-orange-lt">Corregido</span>
                         {% else %}
-                            <span class="badge bg-azure-lt">Base QVET</span>
+                            <span class="badge bg-azure-lt">Base</span>
                         {% endif %}
                     </td>
                     <td class="text-end">

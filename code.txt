@@ -1,9 +1,4 @@
 
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-npx qrdev uvicorn main:app --host 0.0.0.0 --port 8000
-
-
 #############################. servidor en mac. ##########################################
 Detener el servicio:
 sudo launchctl bootout system/com.vetsuite.web

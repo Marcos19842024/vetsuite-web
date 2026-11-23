@@ -56,3 +56,7 @@ CORTE_SEMANAL_DIR         = UPLOADS_DIR / "corte_semanal"
 EGRESOS_DIR               = UPLOADS_DIR / "egresos"
 EGRESOS_CONTABILIDAD_DIR  = EGRESOS_DIR / "contabilidad"
 SAT_HISTORIAL_DIR         = EGRESOS_DIR / "_sat_historial"
+
+# --- Cuentas por Cobrar ---
+CPC_DIR          = UPLOADS_DIR / "cpc"
+CPC_CONFIG       = JSON_DIR / "cuentas_por_cobrar_config.json"

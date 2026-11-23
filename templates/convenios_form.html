@@ -14,11 +14,21 @@
           class="text-muted">· {{ conv.folio }}
         </small>{% endif %}
       </h2>
-      <div class="text-muted small">
-          {{ total }} productos ({{ total_base }} base · {{ total_manual }} corregidos/agregados)
-      </div>
     </div>
     <div class="col-auto btn-list">
+      {% if conv %}
+        <div class="col-auto">
+          <select class="form-select form-select-sm" id="select-estado"
+                  style="min-width: 140px;"
+                  onchange="cambiarEstado(this.value)">
+            <option value="borrador"  {% if conv.estado == 'borrador'  %}selected{% endif %}>Borrador</option>
+            <option value="impreso"   {% if conv.estado == 'impreso'   %}selected{% endif %}>Impreso</option>
+            <option value="firmado"   {% if conv.estado == 'firmado'   %}selected{% endif %}>Firmado</option>
+            <option value="pagado"    {% if conv.estado == 'pagado'    %}selected{% endif %}>Pagado</option>
+            <option value="cancelado" {% if conv.estado == 'cancelado' %}selected{% endif %}>Cancelado</option>
+          </select>
+        </div>
+      {% endif %}
       {% if conv and tiene_efectuados %}
         <button
           type="button"
@@ -249,6 +259,47 @@ function agregarPago(pago = null) {
   if (BLOQUEADO) aplicarBloqueoFila(tr);
 }
 
+async function cambiarEstado(nuevo) {
+  if (!CONV_ID) return;
+
+  const sel = document.getElementById('select-estado');
+  const estadoAnterior = sel.dataset.estadoAnterior || sel.value;
+
+  // Confirmación según el destino
+  let msg = `¿Cambiar el estado del convenio a "${nuevo}"?`;
+  if (nuevo === 'cancelado') {
+    msg = '⚠️ CANCELAR CONVENIO\n\nUn convenio cancelado no se puede reactivar. ¿Continuar?';
+  } else if (nuevo === 'pagado') {
+    msg = '¿Marcar el convenio como PAGADO?\n\nEsta acción no se puede deshacer.';
+  }
+
+  if (!confirm(msg)) {
+    // Revertir el select al estado anterior
+    sel.value = estadoAnterior;
+    return;
+  }
+
+  try {
+    const r = await fetch(`/convenios/${CONV_ID}/estado`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({estado: nuevo}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      // Recargar para reflejar el nuevo estado en toda la UI
+      window.location.reload();
+    } else {
+      alert(data.error || 'No se pudo cambiar el estado.');
+      sel.value = estadoAnterior;
+    }
+  } catch (err) {
+    alert('Error de red: ' + err);
+    sel.value = estadoAnterior;
+  }
+}
+window.cambiarEstado = cambiarEstado;
+
 function renumerarPagos() {
   document.querySelectorAll('#pagos-body tr').forEach((tr, i) => {
     tr.querySelector('.num-pago').textContent = i + 1;
@@ -319,45 +370,88 @@ function aplicarBloqueoTotal() {
   });
 }
 
-function desbloquearFormulario() {
-  if (!PASSWORD_CONFIGURADA) {
-    BLOQUEADO = false;
-    document.querySelectorAll('#form-conv input, #form-conv select, #form-conv textarea')
-      .forEach(el => {
-        if (el.closest('.fila-bloqueada')) return;
-        el.disabled = false;
-      });
-    document.querySelectorAll('#pagos-body tr').forEach(tr => {
-      if (tr.classList.contains('fila-bloqueada')) {
-        tr.querySelector('.pago-efectuado').disabled = true;
-      }
+function _aplicarDesbloqueo() {
+  console.log('[aplicarDesbloqueo] inicio');
+
+  // 1) Form principal
+  let desbloqueados = 0;
+  document.querySelectorAll('#form-conv input, #form-conv select, #form-conv textarea')
+    .forEach(el => {
+      if (el.closest('#pagos-body')) return;
+      el.disabled = false;
+      desbloqueados++;
     });
+  console.log('[aplicarDesbloqueo] form principal desbloqueado:', desbloqueados);
+
+  // 2) Filas de pagos
+  document.querySelectorAll('#pagos-body tr').forEach(tr => {
+    const efectuado = tr.querySelector('.pago-efectuado')?.checked;
+    if (efectuado) return;  // respeta regla 73
+
+    tr.classList.remove('fila-bloqueada');
+    tr.querySelectorAll('input, select, button').forEach(el => {
+      el.disabled = false;
+    });
+    if (!tr.querySelector('.btn-eliminar-pago')) {
+      const tdAcciones = tr.querySelector('td:last-child');
+      if (tdAcciones) {
+        tdAcciones.innerHTML = `
+          <button type="button" class="btn btn-sm btn-outline-danger btn-eliminar-pago" onclick="eliminarPago(this)">
+            <i class="ti ti-trash" style="font-size: 1rem;"></i>
+          </button>`;
+      }
+    }
+  });
+
+  // 3) Ocultar botón Desbloquear
+  const btnDesc = document.getElementById('btn-desbloquear');
+  if (btnDesc) btnDesc.style.display = 'none';
+
+  // 4) Recalcular suma
+  if (typeof actualizarSuma === 'function') actualizarSuma();
+
+  console.log('[aplicarDesbloqueo] fin');
+}
+
+function desbloquearFormulario() {
+  console.log('[desbloquear] inicio. PASSWORD_CONFIGURADA =', PASSWORD_CONFIGURADA, 'BLOQUEADO =', BLOQUEADO);
+
+  if (!PASSWORD_CONFIGURADA) {
+    console.log('[desbloquear] sin password configurada, desbloqueo directo');
+    BLOQUEADO = false;
+    _aplicarDesbloqueo();
     return;
   }
+
   const pwd = prompt('Contraseña para modificar el convenio:');
+  console.log('[desbloquear] pwd capturada:', pwd ? 'sí' : 'no');
   if (!pwd) return;
+
   fetch('/convenios/verificar-password', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({password: pwd}),
   })
-    .then(r => r.json())
+    .then(r => {
+      console.log('[desbloquear] respuesta status:', r.status);
+      return r.json();
+    })
     .then(data => {
-      if (!data.ok) { alert(data.error || 'Contraseña incorrecta.'); return; }
+      console.log('[desbloquear] data:', data);
+      if (!data.ok) {
+        alert(data.error || 'Contraseña incorrecta.');
+        return;
+      }
       PASSWORD_VALIDADA_TEXTO = pwd;
       BLOQUEADO = false;
-      document.querySelectorAll('#form-conv input, #form-conv select, #form-conv textarea')
-        .forEach(el => {
-          if (el.closest('.fila-bloqueada')) return;
-          el.disabled = false;
-        });
-      document.querySelectorAll('#pagos-body tr').forEach(tr => {
-        if (tr.classList.contains('fila-bloqueada')) {
-          tr.querySelector('.pago-efectuado').disabled = true;
-        }
-      });
+      console.log('[desbloquear] BLOQUEADO ahora =', BLOQUEADO);
+      _aplicarDesbloqueo();
+      console.log('[desbloquear] _aplicarDesbloqueo() ejecutado');
     })
-    .catch(() => alert('Error al verificar la contraseña.'));
+    .catch(err => {
+      console.error('[desbloquear] error:', err);
+      alert('Error al verificar la contraseña: ' + err);
+    });
 }
 
 async function buscarFacturaFila(tr) {
@@ -446,6 +540,26 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!document.getElementById('f-fecha').value) {
     document.getElementById('f-fecha').value = new Date().toISOString().slice(0, 10);
   }
+
+  // --- Selector de estado ---
+  const sel = document.getElementById('select-estado');
+  if (sel) {
+    sel.dataset.estadoAnterior = sel.value;
+
+    // Deshabilitar opciones no permitidas
+    const transiciones = {
+      borrador:  ['impreso', 'cancelado'],
+      impreso:   ['firmado', 'borrador', 'cancelado'],
+      firmado:   ['pagado', 'cancelado'],
+      pagado:    [],
+      cancelado: [],
+    };
+    const permitidos = new Set([sel.value, ...(transiciones[sel.value] || [])]);
+    [...sel.options].forEach(opt => {
+      if (!permitidos.has(opt.value)) opt.disabled = true;
+    });
+  }
+
   PAGOS_INICIALES.forEach(p => agregarPago(p));
   if (PAGOS_INICIALES.length === 0) agregarPago();
   actualizarTotal();

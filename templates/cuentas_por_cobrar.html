@@ -1,0 +1,650 @@
+{% extends "base.html" %}
+{% block title %}Cuentas por Cobrar{% endblock %}
+{% block content %}
+<!-- Header -->
+<div class="page-header mb-3">
+  <div class="row align-items-center">
+    <div class="col">
+      <h2
+        class="page-title">
+        Cuentas por Cobrar
+        <span
+          class="text-secondary fw-normal"
+          style="font-size: .85rem; margin-left: .75rem;"
+          id="badge-resumen">
+        </span>
+      </h2>
+    </div>
+  </div>
+</div>
+
+<!-- Barra de herramientas -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+    <div class="btn-list">
+      <button class="btn btn-outline-success btn-sm" id="btn-importar">
+        <i class="ti ti-file-type-xls me-1" style="font-size: 1.15rem;"></i> Importar lista
+      </button>
+      <span class="vr mx-2"></span>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        id="btn-reverificar-convenios"
+        title="Vuelve a cruzar todos los clientes contra los convenios activos">
+        <i class="ti ti-refresh me-1" style="font-size: 1.15rem;"></i> Reverificar convenios
+      </button>
+    </div>
+
+    <div class="ms-auto btn-list">
+    </div> 
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col">
+        <label class="form-label small mb-0">Buscar</label>
+        <input type="text" id="f-q" class="form-control form-control-sm" placeholder="Cliente, ID…">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Desde</label>
+        <input type="date" id="f-desde" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Hasta</label>
+        <input type="date" id="f-hasta" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Estado</label>
+        <select id="f-estado" class="form-select form-select-sm">
+          <option value="">Todos</option>
+          <option value="convenio">Convenio</option>
+          <option value="institucional">Institucional</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="asignada">Asignada</option>
+          <option value="contactado">Contactado</option>
+          <option value="promesa_pago">Promesa de pago</option>
+          <option value="pagado">Pagado</option>
+          <option value="no_localizado">No localizado</option>
+          <option value="disputa">Disputa</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-0">Semáforo</label>
+        <select id="f-semaforo" class="form-select form-select-sm">
+          <option value="">Todos</option>
+          <option value="verde">Verde (≤30d)</option>
+          <option value="amarillo">Amarillo (31–60d)</option>
+          <option value="naranja">Naranja (61–90d)</option>
+          <option value="rojo">Rojo (>90d)</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-check mb-0">
+          <input type="checkbox" id="f-solo-vencidas" class="form-check-input">
+          <span class="form-check-label small">Solo con saldo</span>
+        </label>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-outline-secondary btn-sm" id="btn-limpiar">Limpiar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabla -->
+<div class="card">
+  <div class="tabla-scroll">
+    <table class="table table-sm table-hover align-middle" id="tabla-cpc">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Teléfono</th>
+          <th class="text-center">Albaranes</th>
+          <th>Más antigua</th>
+          <th class="text-center">Días</th>
+          <th class="text-end">Saldo</th>
+          <th class="text-center">Estado</th>
+          <th class="text-center">Prioridad</th>
+          <th>Últ. contacto</th>
+          <th>Próx. contacto</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-cpc"></tbody>
+      <tfoot id="tfoot-cpc" class="table-light"></tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- Modal de importación -->
+<dialog id="modal-importar" class="modal-propio" style="max-width:480px;">
+  <form id="form-importar">
+    <div class="modal-header">
+      <h5 class="modal-title">Importar lista</h5>
+      <button type="button" class="btn-close" id="importar-cerrar"></button>
+    </div>
+    <div class="modal-body">
+      <input type="file" name="archivo" accept=".xlsx" class="form-control" required>
+      <div id="importar-resultado" class="mt-3 small"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" class="btn btn-outline-primary btn-sm" id="btn-importar-submit">Importar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Modal de detalle del cliente -->
+<dialog id="modal-detalle" class="modal-propio" style="max-width:1100px; width:95vw;">
+  <div class="modal-header">
+    <h5 class="modal-title" id="detalle-titulo">Cliente</h5>
+    <span class="vr mx-2"></span>
+    <div class="small text-muted mt-1" id="detalle-sucursal"></div>
+    <button type="button" class="btn-close" id="detalle-cerrar"></button>
+  </div>
+
+  <div class="modal-body" style="overflow: auto;">
+    <div class="row g-3">
+      <!-- Columna izquierda: datos + albaranes + gestión -->
+      <div class="col-md-7">
+        <div id="detalle-banner-convenio"></div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label small">
+              Teléfono
+              <span class="badge bg-secondary-lt text-secondary" id="detalle-telefono-origen" style="font-size:.65rem;"></span>
+            </label>
+            <input type="text" id="detalle-telefono" class="form-control form-control-sm">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">
+              Email
+              <span class="badge bg-secondary-lt text-secondary" id="detalle-email-origen" style="font-size:.65rem;"></span>
+            </label>
+            <input type="text" id="detalle-email" class="form-control form-control-sm">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">RFC</label>
+            <input type="text" id="detalle-rfc" class="form-control form-control-sm">
+          </div>
+        </div>
+
+        <h6 class="mt-3">Albaranes adeudados</h6>
+        <div class="tabla-scroll" style="max-height:280px;">
+          <table class="table table-sm table-hover">
+            <thead><tr>
+              <th>Albarán</th>
+              <th>Factura</th>
+              <th>Mascota</th>
+              <th>NHC</th>
+              <th>Fecha</th>
+              <th class="text-end">Total</th>
+              <th class="text-end">Cobrado</th>
+              <th class="text-end">Deuda</th>
+              <th>Obs.</th>
+            </tr></thead>
+            <tbody id="detalle-albaranes"></tbody>
+          </table>
+        </div>
+
+        <div class="row g-2 mt-3">
+          <div class="col-md-6">
+            <label class="form-label small">Estado</label>
+            <select id="detalle-estado" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Prioridad</label>
+            <select id="detalle-prioridad" class="form-select form-select-sm">
+              <option value="baja">Baja</option>
+              <option value="normal" selected>Normal</option>
+              <option value="alta">Alta</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Próximo contacto</label>
+            <input type="date" id="detalle-proximo" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Notas internas (admin)</label>
+            <textarea id="detalle-notas" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Columna derecha: bitácora -->
+      <div class="col-md-5">
+        <h6>Nueva entrada de bitácora</h6>
+        <form id="form-bitacora" class="row g-2">
+          <div class="col-6">
+            <label class="form-label small">Fecha</label>
+            <input type="date" name="fecha" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Hora</label>
+            <input type="time" name="hora" class="form-control form-control-sm">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Tipo</label>
+            <select name="tipo_contacto" class="form-select form-select-sm">
+              <option value="llamada">Llamada</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="email">Email</option>
+              <option value="visita">Visita</option>
+              <option value="sms">SMS</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Resultado</label>
+            <select name="resultado" class="form-select form-select-sm">
+              <option value="">—</option>
+              <option value="sin_respuesta">Sin respuesta</option>
+              <option value="contestado">Contestado</option>
+              <option value="buzon">Buzón</option>
+              <option value="numero_equivocado">Número equivocado</option>
+              <option value="promesa_pago">Promesa de pago</option>
+              <option value="pago_realizado">Pago realizado</option>
+              <option value="no_le_interesa">No le interesa</option>
+              <option value="disputa">Disputa</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Promesa fecha</label>
+            <input type="date" name="promesa_fecha" class="form-control form-control-sm">
+          </div>
+          <div class="col-6">
+            <label class="form-label small">Promesa monto</label>
+            <input type="number" name="promesa_monto" step="0.01" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label small">Observaciones</label>
+            <textarea name="observaciones" rows="2" class="form-control form-control-sm"></textarea>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-outline-primary btn-sm">Guardar entrada</button>
+          </div>
+        </form>
+
+        <h6 class="mt-3">Historial</h6>
+        <div id="detalle-bitacora" class="small"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-footer">
+    <div class="d-flex gap-2">
+      <button
+        class="btn btn-outline-primary btn-sm"
+        id="detalle-guardar">Guardar cambios
+      </button>
+      <button
+        class="btn btn-outline-success btn-sm"
+        id="detalle-verificar-qvet">
+        <i class="ti ti-check me-1" style="font-size: 1.15rem;"></i> Verificado en QVET
+      </button>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        id="detalle-reverificar-convenio"
+        title="Busca si este cliente ya tiene un convenio activo">
+        <i class="ti ti-file-search me-1" style="font-size: 1.15rem;"></i> Reverificar convenio
+      </button>
+    </div>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  let FILAS = [];
+  let CLIENTE_ACTUAL = null;
+  let VERIFICADO = false;
+
+  const $ = (sel, root=document) => root.querySelector(sel);
+  const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+
+  const fmt = n => "$" + (Number(n)||0).toLocaleString("es-MX", {minimumFractionDigits:2, maximumFractionDigits:2});
+  const hoyISO = () => new Date().toISOString().slice(0,10);
+
+  const ESTADOS = [
+    ["pendiente","Pendiente"], ["asignada","Asignada"],
+    ["contactado","Contactado"], ["promesa_pago","Promesa de pago"],
+    ["pagado","Pagado"], ["no_localizado","No localizado"],
+    ["disputa","Disputa"], ["cancelado","Cancelado"],
+  ];
+  const ESTADOS_BLOQUEADOS = new Set(["contactado","promesa_pago","pagado"]);
+
+  // ---------- Cargar datos ----------
+  async function cargar() {
+    const params = new URLSearchParams();
+    const est = $("#f-estado").value; if (est) params.set("estado", est);
+    const sem = $("#f-semaforo").value; if (sem) params.set("semaforo", sem);
+    const d = $("#f-desde").value; if (d) params.set("desde", d);
+    const h = $("#f-hasta").value; if (h) params.set("hasta", h);
+    if ($("#f-solo-vencidas").checked) params.set("solo_vencidas", "1");
+
+    const r = await fetch("/cuentas_por_cobrar/datos?" + params.toString());
+    const data = await r.json();
+    FILAS = data.filas;
+    pintar(data);
+  }
+
+  $("#btn-reverificar-convenios").addEventListener("click", async () => {
+    if (!confirm("Se revisarán todos los clientes contra los convenios activos.\n\n¿Continuar?")) return;
+    const btn = $("#btn-reverificar-convenios");
+    const htmlOrig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Verificando…';
+    try {
+      const r = await fetch("/cuentas_por_cobrar/reverificar-convenios", {method: "POST"});
+      const data = await r.json();
+      if (data.ok) {
+        alert(`Revisión completa.\nMarcados: ${data.marcados}\nDesmarcados: ${data.desmarcados}\nTotal revisados: ${data.total}`);
+        await cargar();
+      } else {
+        alert("Error: " + (data.error || "desconocido"));
+      }
+    } catch (e) {
+      alert("Error de red: " + e);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = htmlOrig;
+    }
+  });
+
+  function pintar(data) {
+    const q = ($("#f-q").value || "").trim().toLowerCase();
+    const filas = q
+      ? FILAS.filter(f => (f.nombre||"").toLowerCase().includes(q) || (f.idcliente_qvet||"").includes(q))
+      : FILAS;
+
+    const tb = $("#tbody-cpc");
+    tb.innerHTML = "";
+    for (const f of filas) {
+      const tr = document.createElement("tr");
+      tr.dataset.id = f.id;
+      tr.style.cursor = "pointer";
+      if (f.es_institucional) tr.classList.add("fila-institucional");
+      if (f.es_convenio) tr.classList.add("fila-convenio");
+      if (f.estado === "pagado") tr.classList.add("fila-pagado");
+
+      tr.innerHTML = `
+        <td>
+          ${f.nombre}
+          ${f.es_convenio ? '<span class="badge bg-primary ms-1" title="Tiene convenio activo"><i class="ti ti-file-text"></i></span>' : ''}
+        </td>
+        <td>${f.telefono || '<span class="text-muted">—</span>'}</td>
+        <td class="text-center">${f.n_albaranes}</td>
+        <td>${f.fecha_mas_antigua || "—"}</td>
+        <td class="text-center">
+          <span class="dot-semaforo dot-${f.semaforo}"></span>${f.dias_antiguedad}
+        </td>
+        <td class="text-end">${fmt(f.saldo)}</td>
+        <td class="text-center"><span class="chip-estado chip-${f.estado}">${f.estado}</span></td>
+        <td class="text-center">${f.prioridad}</td>
+        <td>${f.ultimo_contacto || "—"}</td>
+        <td>${f.proximo_contacto || "—"}</td>
+      `;
+      tr.addEventListener("dblclick", () => abrirDetalle(f.id));
+      tb.appendChild(tr);
+    }
+
+    const t = data.totales;
+    $("#tfoot-cpc").innerHTML = `
+      <tr>
+        <th colspan="5">${t.n} clientes</th>
+        <th class="text-end">${fmt(t.saldo)}</th>
+        <th colspan="4" class="text-muted small">
+          Total ${fmt(t.monto_total)} · Cobrado ${fmt(t.monto_cobrado)}
+        </th>
+      </tr>`;
+    $("#badge-resumen").textContent =
+      `${t.n} clientes · Saldo ${fmt(t.saldo)}`;
+  }
+
+  // ---------- Modal detalle ----------
+  async function abrirDetalle(id) {
+    const r = await fetch(`/cuentas_por_cobrar/${id}`);
+    if (!r.ok) { alert("No se pudo cargar el cliente"); return; }
+    const data = await r.json();
+    CLIENTE_ACTUAL = data.cliente;
+    VERIFICADO = data.verificado_en_qvet;
+
+    $("#detalle-titulo").textContent =
+      `${data.cliente.nombre} · ID ${data.cliente.idcliente_qvet}`;
+
+    // --- Datos de contacto ---
+    $("#detalle-sucursal").textContent = data.cliente.sucursal || "";
+    $("#detalle-telefono").value = data.cliente.telefono || "";
+    $("#detalle-email").value    = data.cliente.email    || "";
+    $("#detalle-rfc").value      = data.cliente.rfc      || "";
+
+    // Chips de origen
+    const telOrigen = data.cliente.telefono_origen || "";
+    const emailOrigen = data.cliente.email_origen || "";
+    $("#detalle-telefono-origen").textContent =
+      telOrigen === "manual" ? "Manual" : (data.cliente.telefono ? "QVET" : "");
+    $("#detalle-email-origen").textContent =
+      emailOrigen === "manual" ? "Manual" : (data.cliente.email ? "QVET" : "");
+
+    // --- Gestión ---
+    $("#detalle-prioridad").value = data.cliente.prioridad || "normal";
+    $("#detalle-proximo").value   = data.cliente.proximo_contacto || "";
+    $("#detalle-notas").value     = data.cliente.notas_internas || "";
+
+    // Estados
+    const sel = $("#detalle-estado");
+    sel.innerHTML = "";
+    for (const [val, txt] of ESTADOS) {
+      const opt = document.createElement("option");
+      opt.value = val; opt.textContent = txt;
+      if (ESTADOS_BLOQUEADOS.has(val) && !VERIFICADO) opt.disabled = true;
+      if (val === data.cliente.estado) opt.selected = true;
+      sel.appendChild(opt);
+    }
+
+    // Banner convenio/institucional (placeholder Fase 2)
+    const ban = $("#detalle-banner-convenio");
+    ban.innerHTML = "";
+    if (data.cliente.es_convenio) {
+      ban.innerHTML = `<div class="alert alert-info small mb-2">
+        <i class="ti ti-file-text"></i> Este cliente tiene convenio activo
+        ${data.cliente.convenio_folio ? "(<strong>"+data.cliente.convenio_folio+"</strong>)" : ""}.
+        No se cobra por esta vía; se gestiona desde <strong>Convenios de Pago</strong>.
+      </div>`;
+    }
+    if (data.cliente.es_institucional) {
+      ban.innerHTML += `<div class="alert alert-secondary small mb-2">
+        Cliente institucional. No aplica cobranza por recepción.
+      </div>`;
+    }
+
+    // Albaranes (ahora con las columnas nuevas)
+    const ab = $("#detalle-albaranes");
+    ab.innerHTML = "";
+    for (const a of data.albaranes) {
+      ab.innerHTML += `<tr>
+        <td>
+          ${a.num_albaran || "—"}
+          <div class="small text-muted">${a.codigo_albaran}</div>
+        </td>
+        <td>${a.numero_factura || "—"}</td>
+        <td>${a.paciente || "—"}</td>
+        <td>${a.nhc || "—"}</td>
+        <td>${a.fecha_albaran || "—"}</td>
+        <td class="text-end">${fmt(a.total_importe)}</td>
+        <td class="text-end">${fmt(a.cobrado_linea)}</td>
+        <td class="text-end">${fmt(a.deuda)}</td>
+        <td class="small text-muted" title="${a.observaciones_factura || ''}">
+          ${a.observaciones_factura ? a.observaciones_factura.substring(0, 20) + (a.observaciones_factura.length > 20 ? "…" : "") : "—"}
+        </td>
+      </tr>`;
+    }
+    if (!data.albaranes.length) {
+      ab.innerHTML = '<tr><td colspan="9" class="text-muted text-center">Sin albaranes</td></tr>';
+    }
+
+    // Bitácora
+    pintarBitacora(data.bitacora);
+
+    // Reverificar convenio
+    const btnRevConv = $("#detalle-reverificar-convenio");
+    btnRevConv.classList.toggle("d-none", data.cliente.es_institucional);
+    btnRevConv.onclick = async () => {
+      const r = await fetch(`/cuentas_por_cobrar/${data.cliente.id}/reverificar-convenio`, {method: "POST"});
+      const res = await r.json();
+      if (res.tiene_convenio) {
+        alert(`Este cliente SÍ tiene convenio activo.\n\nFolio: ${res.folio}\nEstado: ${res.estado_convenio}`);
+      } else {
+        alert("Este cliente no tiene convenio activo.");
+      }
+      await abrirDetalle(data.cliente.id);
+      await cargar();
+    };
+
+    // Form bitácora
+    const form = $("#form-bitacora");
+    form.reset();
+    form.querySelector('[name="fecha"]').value = hoyISO();
+
+    $("#modal-detalle").showModal();
+  }
+
+  function pintarBitacora(entries) {
+    const cont = $("#detalle-bitacora");
+    cont.innerHTML = "";
+    if (!entries.length) {
+      cont.innerHTML = '<div class="text-muted">Sin registros todavía.</div>';
+      return;
+    }
+    for (const e of entries) {
+      const div = document.createElement("div");
+      div.className = "border-bottom pb-1 mb-1";
+      div.innerHTML = `<strong>${e.fecha} ${e.hora || ""}</strong>
+        · ${e.tipo_contacto} · ${e.resultado || "—"}
+        ${e.promesa_fecha ? `<br>Promesa: ${e.promesa_fecha} ${fmt(e.promesa_monto)}` : ""}
+        ${e.observaciones ? `<br><span class="text-muted">${e.observaciones}</span>` : ""}`;
+      cont.appendChild(div);
+    }
+  }
+
+  // ---------- Eventos ----------
+  $("#btn-importar").addEventListener("click", () => {
+    $("#importar-resultado").innerHTML = "";
+    const btn = $("#btn-importar-submit");
+    btn.disabled = false;
+    btn.classList.remove("d-none");
+    $("#form-importar").reset();
+    $("#modal-importar").showModal();
+  });
+  $("#importar-cerrar").addEventListener("click", () => $("#modal-importar").close());
+
+  $("#form-importar").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+    const btn = $("#btn-importar-submit");
+    const out = $("#importar-resultado");
+    // Deshabilita y oculta el botón mientras se procesa
+    btn.disabled = true;
+    btn.classList.add("d-none");
+    $("#importar-resultado").textContent = "Importando…";
+    try {
+      const r = await fetch("/cuentas_por_cobrar/importar", {method:"POST", body: fd});
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Error");
+      $("#importar-resultado").innerHTML = `
+        <div class="alert alert-success mb-0">
+          <strong>Listo.</strong><br>
+          Filas leídas: ${data.filas_leidas}<br>
+          Clientes nuevos: ${data.clientes_nuevos} · actualizados: ${data.clientes_actualizados}<br>
+          Albaranes nuevos: ${data.albaranes_nuevos} · actualizados: ${data.albaranes_actualizados}<br>
+          Omitidos: ${data.omitidos}
+        </div>`;
+      await cargar();
+    } catch (e) {
+      // En error, restauramos el botón para poder reintentar
+      btn.disabled = false;
+      btn.classList.remove("d-none");
+      $("#importar-resultado").innerHTML =
+        `<div class="alert alert-danger mb-0">${e.message}</div>`;
+    } finally {
+      $("#btn-importar-submit").disabled = false;
+    }
+  });
+
+  $("#detalle-cerrar").addEventListener("click", () => $("#modal-detalle").close());
+
+  $("#detalle-guardar").addEventListener("click", async () => {
+    if (!CLIENTE_ACTUAL) return;
+    const body = {
+      estado: $("#detalle-estado").value,
+      prioridad: $("#detalle-prioridad").value,
+      proximo_contacto: $("#detalle-proximo").value,
+      notas_internas: $("#detalle-notas").value,
+      telefono: $("#detalle-telefono").value.trim(),
+      email: $("#detalle-email").value.trim(),
+      rfc: $("#detalle-rfc").value.trim(),
+    };
+    const r = await fetch(`/cuentas_por_cobrar/${CLIENTE_ACTUAL.id}/estado`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) { alert(data.error || "Error"); return; }
+    $("#modal-detalle").close();
+    await cargar();
+  });
+
+  $("#detalle-verificar-qvet").addEventListener("click", async () => {
+    if (!CLIENTE_ACTUAL) return;
+    const r = await fetch(`/cuentas_por_cobrar/${CLIENTE_ACTUAL.id}/verificar-qvet`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({usuario: ""}),
+    });
+    if (!r.ok) { alert("Error al verificar"); return; }
+    VERIFICADO = true;
+    await abrirDetalle(CLIENTE_ACTUAL.id);
+  });
+
+  $("#form-bitacora").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!CLIENTE_ACTUAL) return;
+    const fd = new FormData(ev.target);
+    const body = Object.fromEntries(fd.entries());
+    body.promesa_monto = parseFloat(body.promesa_monto || 0);
+    const r = await fetch(`/cuentas_por_cobrar/${CLIENTE_ACTUAL.id}/bitacora`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!r.ok) { alert(data.detail || "Error"); return; }
+    if (data.sugerencia) alert(data.sugerencia);
+    await abrirDetalle(CLIENTE_ACTUAL.id);
+  });
+
+  // Filtros
+  ["f-estado","f-semaforo","f-desde","f-hasta","f-solo-vencidas"].forEach(id => {
+    $("#"+id).addEventListener("change", cargar);
+  });
+  let tq;
+  $("#f-q").addEventListener("input", () => {
+    clearTimeout(tq);
+    tq = setTimeout(() => pintar({filas: FILAS, totales: {
+      n: FILAS.length,
+      monto_total: FILAS.reduce((s,f)=>s+f.monto_total,0),
+      monto_cobrado: FILAS.reduce((s,f)=>s+f.monto_cobrado,0),
+      saldo: FILAS.reduce((s,f)=>s+f.saldo,0),
+    }}), 150);
+  });
+  $("#btn-limpiar").addEventListener("click", () => {
+    ["f-estado","f-semaforo","f-desde","f-hasta","f-q"].forEach(id => $("#"+id).value = "");
+    $("#f-solo-vencidas").checked = false;
+    cargar();
+  });
+
+  cargar();
+})();
+</script>
+{% endblock %}

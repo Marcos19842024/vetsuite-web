@@ -8,7 +8,7 @@ from core import permisos_ip
 from shared.templates_shared import templates
 from shared.jobs_convenios import iniciar as iniciar_job_convenios
 from routers import (
-    convenios, corte_semanal, ingresos, egresos, recordatorios, config_gmail, uploads, rechazados,
+    convenios, corte_semanal, cuentas_por_cobrar, ingresos, egresos, recordatorios, config_gmail, uploads, rechazados,
     admin_ips, servicios_externos
 )
 
@@ -71,6 +71,7 @@ app.include_router(config_gmail.router)
 app.include_router(rechazados.router)
 app.include_router(uploads.router)
 app.include_router(convenios.router)
+app.include_router(cuentas_por_cobrar.router)
 app.include_router(admin_ips.router)
 
 

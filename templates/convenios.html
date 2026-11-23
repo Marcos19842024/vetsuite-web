@@ -49,7 +49,7 @@
         href="/convenios/excel{% if filtros.estado or filtros.desde or filtros.hasta or filtros.q %}?estado={{ filtros.estado }}&desde={{ filtros.desde }}&hasta={{ filtros.hasta }}&q={{ filtros.q }}{% endif %}"
         class="btn btn-outline-success btn-sm">
         <i class="ti ti-file-type-xls me-1" style="font-size: 1.15rem;"></i>
-        Exportar Excel
+        Generar reporte
       </a>
     </div>
     
@@ -75,18 +75,6 @@
 <div class="card mb-3">
   <div class="card-body py-2">
     <form method="get" action="/convenios" class="row g-2 align-items-end" id="form-filtros">
-      <div class="col-md-2">
-        <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Estado</label>
-        <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
-          <option value="">Todos los estados</option>
-          <option value="borrador"  {% if filtros.estado == 'borrador' %}selected{% endif %}>Borrador</option>
-          <option value="impreso"   {% if filtros.estado == 'impreso' %}selected{% endif %}>Impreso</option>
-          <option value="firmado"   {% if filtros.estado == 'firmado' %}selected{% endif %}>Firmado</option>
-          <option value="pagado"    {% if filtros.estado == 'pagado' %}selected{% endif %}>Pagado</option>
-          <option value="cancelado" {% if filtros.estado == 'cancelado' %}selected{% endif %}>Cancelado</option>
-        </select>
-      </div>
-
       <input type="hidden" name="q" id="filtro-q-hidden" value="{{ filtros.q }}">
       <div class="col-md-2">
         <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Desde</label>
@@ -100,6 +88,18 @@
           value="{{ filtros.hasta }}" title="Hasta" onchange="this.form.submit()">
       </div>
       
+      <div class="col-md-2">
+        <label class="form-label text-muted mb-1" style="font-size: 0.75rem;">Estado</label>
+        <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">Todos los estados</option>
+          <option value="borrador"  {% if filtros.estado == 'borrador' %}selected{% endif %}>Borrador</option>
+          <option value="impreso"   {% if filtros.estado == 'impreso' %}selected{% endif %}>Impreso</option>
+          <option value="firmado"   {% if filtros.estado == 'firmado' %}selected{% endif %}>Firmado</option>
+          <option value="pagado"    {% if filtros.estado == 'pagado' %}selected{% endif %}>Pagado</option>
+          <option value="cancelado" {% if filtros.estado == 'cancelado' %}selected{% endif %}>Cancelado</option>
+        </select>
+      </div>
+
       <div class="col-auto ms-auto">
         <div class="ms-auto btn-list">
           <input type="text" id="buscar-texto" class="form-control form-control-sm"

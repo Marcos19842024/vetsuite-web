@@ -3,11 +3,11 @@ import json
 from shared.rutas import IP_PERMISOS as RUTA
 
 _DEFAULT = {
-    "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios"],
+    "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios", "cuentas por cobrar"],
     "ips": {
         "127.0.0.1": {
             "nombre": "Servidor / Administrador",
-            "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios"],
+            "modulos": ["ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios", "cuentas por cobrar"],
         }
     },
     "admin ips": ["127.0.0.1"],
@@ -71,7 +71,7 @@ def es_admin(ip: str) -> bool:
 
 
 def modulo_de_path(path: str):
-    for m in ("ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios"):
+    for m in ("ingresos", "egresos", "corte semanal", "servicios externos", "recordatorios", "convenios", "cuentas por cobrar"):
         if path == f"/{m}" or path.startswith(f"/{m}/"):
             return m
     return None
