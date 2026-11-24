@@ -131,11 +131,18 @@
 <div class="firma">
   <div>
     <div class="raya"></div>
-    Firma y huella de EL TUTOR
+    <strong>{{ conv.otorga or '_____________________' }}</strong><br>
+    Otorga el crédito
   </div>
   <div>
     <div class="raya"></div>
-    Firma del personal que autoriza el crédito
+    <strong>{{ conv.autoriza or '_____________________' }}</strong><br>
+    Autoriza
+  </div>
+  <div>
+    <div class="raya"></div>
+    <strong>{{ conv.propietario }}</strong><br>
+    Firma y huella de EL TUTOR
   </div>
 </div>
 

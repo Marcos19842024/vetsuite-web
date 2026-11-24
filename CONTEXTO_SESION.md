@@ -140,6 +140,33 @@ Se completó:
 127. v0.10.x: El selector de estado en el formulario deshabilita las
      opciones no permitidas según el estado actual. Si el usuario
      cancela el confirm, el select revierte al estado anterior.
+128. v0.10.x: En Jinja2, una variable solo existe dentro del `{% for %}`
+     que la define. Si ves `{{ a.id }}` fuera de un `{% for a in ... %}`,
+     es un bug. El listado de convenios tuvo ese bug en la barra de
+     herramientas (línea 58) y se corrigió moviendo los botones
+     individuales al loop del header o eliminándolos.
+129. v0.10.x: Los badges con `bg-primary`, `bg-danger`, `bg-success` y
+     `bg-warning` en Tabler requieren `text-white` explícito para que
+     el texto se vea (excepto `bg-warning`, que necesita
+     `text-dark`). Sin esto, el texto hereda el color oscuro por
+     defecto y no se lee sobre el fondo de color.
+130. v0.10.x: Un cliente de Cuentas por Cobrar puede ser "institucional"
+     (lo lleva administración) o "convenio" (tiene un convenio de pago
+     activo), pero NO ambos. Al marcar institucional se limpia el
+     convenio, y al marcar convenio se limpia el institucional.
+131. v0.10.x: Solo admin puede marcar/desmarcar institucional. En la
+     UI actual el botón está visible para todos; se ocultará a
+     recepción cuando implementemos permisos por rol (Bloque 5).
+132. v0.10.x: Al marcar institucional, el estado pasa a 'institucional'.
+     Al desmarcar, pasa a 'pendiente' y se re-cruza contra convenios.
+133. v0.10.x: Un cliente institucional no puede cambiar de estado a
+     otro que no sea 'institucional' (excepto desmarcándolo primero).
+134. v0.10.x: Los cambios de institucional se registran en bitácora
+     con tipo='otro', resultado='institucional', observaciones
+     descriptivas.
+135. v0.10.x: El listado de Cuentas por Cobrar NO muestra clientes
+     institucionales por defecto. Hay un checkbox "Ver institucionales"
+     que los incluye (solo visible para admin en el futuro).
 
 # Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — deuda técnica del refactor)
 

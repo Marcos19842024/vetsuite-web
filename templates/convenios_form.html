@@ -6,13 +6,11 @@
 <div class="page-header mb-3">
   <div class="row align-items-center">
     <div class="col">
-      <h2
-        class="page-title">
+      <h2 class="page-title">
         {{ 'Editar' if conv else 'Nuevo' }} convenio
         {% if conv %}
-        <small 
-          class="text-muted">· {{ conv.folio }}
-        </small>{% endif %}
+        <small class="text-muted">· {{ conv.folio }}</small>
+        {% endif %}
       </h2>
     </div>
     <div class="col-auto btn-list">
@@ -30,35 +28,28 @@
         </div>
       {% endif %}
       {% if conv and tiene_efectuados %}
-        <button
-          type="button"
-          class="btn btn-outline-warning btn-sm"
-          id="btn-desbloquear"
-          onclick="desbloquearFormulario()">
+        <button type="button" class="btn btn-outline-warning btn-sm"
+                id="btn-desbloquear" onclick="desbloquearFormulario()">
           <i class="ti ti-lock me-1" style="font-size: 1.15rem;"></i> Desbloquear
         </button>
       {% endif %}
-      <button
-        class="btn btn-outline-primary btn-sm"
-        onclick="guardar()">
+      <button class="btn btn-outline-primary btn-sm" onclick="guardar()">
         Guardar
       </button>
       {% if conv %}
         {% if conv.estado == 'borrador' and not tiene_efectuados %}
           <button class="btn btn-sm btn-outline-danger" title="Eliminar"
-            onclick="eliminarConvenio()">
+                  onclick="eliminarConvenio()">
             <i class="ti ti-trash" style="font-size: 1.15rem;"></i>
           </button>
         {% endif %}
-        <button
-          type="button"
-          class="btn btn-outline-dark btn-sm"
-          onclick="imprimirConvenio({{ conv.id }})">
+        <button type="button" class="btn btn-outline-dark btn-sm"
+                onclick="imprimirConvenio({{ conv.id }})">
           <i class="ti ti-printer me-1" style="font-size: 1.15rem;"></i> Imprimir
         </button>
       {% endif %}
       <a href="/convenios" class="btn btn-outline-secondary btn-sm">← Volver a Convenios</a>
-    </div>      
+    </div>
   </div>
 </div>
 
@@ -84,22 +75,22 @@
         <div class="col-md-5">
           <label class="form-label">Nombre del propietario *</label>
           <input type="text" class="form-control" id="f-propietario" required
-                  value="{{ conv.propietario if conv else '' }}">
+                 value="{{ conv.propietario if conv else '' }}">
         </div>
         <div class="col-md-3">
           <label class="form-label">RFC (opcional, para búsqueda)</label>
           <input type="text" class="form-control" id="f-rfc"
-                  value="{{ conv.rfc if conv and conv.rfc else '' }}">
+                 value="{{ conv.rfc if conv and conv.rfc else '' }}">
         </div>
         <div class="col-md-4">
           <label class="form-label">Teléfono</label>
           <input type="text" class="form-control" id="f-telefono"
-                  value="{{ conv.telefono if conv else '' }}">
+                 value="{{ conv.telefono if conv else '' }}">
         </div>
         <div class="col-md-12">
           <label class="form-label">Dirección</label>
           <input type="text" class="form-control" id="f-direccion"
-                  value="{{ conv.direccion if conv else '' }}">
+                 value="{{ conv.direccion if conv else '' }}">
         </div>
       </div>
     </div>
@@ -113,12 +104,12 @@
         <div class="col-md-6">
           <label class="form-label">Nombre de la mascota *</label>
           <input type="text" class="form-control" id="f-mascota" required
-                  value="{{ conv.mascota if conv else '' }}">
+                 value="{{ conv.mascota if conv else '' }}">
         </div>
         <div class="col-md-6">
           <label class="form-label">NHC (Número de Historia Clínica)</label>
           <input type="text" class="form-control" id="f-nhc"
-                  value="{{ conv.nhc if conv else '' }}">
+                 value="{{ conv.nhc if conv else '' }}">
         </div>
       </div>
     </div>
@@ -132,22 +123,22 @@
         <div class="col-md-3">
           <label class="form-label">Fecha del convenio *</label>
           <input type="date" class="form-control" id="f-fecha" required
-                  value="{{ conv.fecha if conv else '' }}">
+                 value="{{ conv.fecha if conv else '' }}">
         </div>
         <div class="col-md-3">
           <label class="form-label">Fecha de vencimiento *</label>
           <input type="date" class="form-control" id="f-vencimiento" required
-                  value="{{ conv.fecha_vencimiento if conv else '' }}">
+                 value="{{ conv.fecha_vencimiento if conv else '' }}">
         </div>
         <div class="col-md-3">
           <label class="form-label">Monto total (MXN) *</label>
           <input type="number" step="0.01" class="form-control monto-total" id="f-total" required
-                  value="{{ '%.2f'|format(conv.monto_total) if conv else '' }}" oninput="actualizarTotal()">
+                 value="{{ '%.2f'|format(conv.monto_total) if conv else '' }}" oninput="actualizarTotal()">
         </div>
         <div class="col-md-3">
           <label class="form-label">Monto en letra (auto)</label>
           <input type="text" class="form-control" id="f-letra" readonly
-                  value="{{ conv.monto_letra if conv else '' }}">
+                 value="{{ conv.monto_letra if conv else '' }}">
         </div>
         <div class="col-md-6">
           <label class="form-label">Lugar de pago</label>
@@ -160,12 +151,33 @@
         <div class="col-md-6">
           <label class="form-label">Cuenta bancaria (opcional)</label>
           <input type="text" class="form-control" id="f-cuenta"
-                  placeholder="{{ cfg.clinica.cuenta_bancaria or 'CLABE / cuenta' }}"
-                  value="{{ conv.cuenta_bancaria if conv else '' }}">
+                 placeholder="{{ cfg.clinica.cuenta_bancaria or 'CLABE / cuenta' }}"
+                 value="{{ conv.cuenta_bancaria if conv else '' }}">
         </div>
         <div class="col-12">
           <label class="form-label">Notas</label>
           <textarea class="form-control" id="f-notas" rows="2">{{ conv.notas if conv else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Otorgamiento del crédito -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Otorgamiento del crédito</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Otorga</label>
+          <input type="text" class="form-control" id="f-otorga"
+                 value="{{ conv.otorga if conv else '' }}"
+                 placeholder="Nombre y cargo de quien otorga el crédito">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Autoriza</label>
+          <input type="text" class="form-control" id="f-autoriza"
+                 value="{{ conv.autoriza if conv else '' }}"
+                 placeholder="Nombre y cargo de quien autoriza">
         </div>
       </div>
     </div>
@@ -181,17 +193,18 @@
     </div>
     <div class="card-body">
       <div class="table-responsive">
-        <table class="table pagos-tabla mb-2">
+        <table class="table pagos-tabla mb-2 table-sm">
           <thead class="table-light">
             <tr>
-              <th width="40">#</th>
-              <th width="130">Fecha</th>
-              <th width="110">Importe</th>
-              <th width="70">Efectuado</th>
-              <th width="120">Albarán</th>
+              <th width="26">#</th>
+              <th width="112">Fecha acordada</th>
+              <th width="86">Importe</th>
+              <th width="90">Albarán</th>
               <th>Factura</th>
-              <th width="150">Tipo de pago</th>
-              <th width="40"></th>
+              <th width="120">Tipo de pago</th>
+              <th width="112">Fecha del pago</th>
+              <th width="60">Efectuado</th>
+              <th width="36"></th>
             </tr>
           </thead>
           <tbody id="pagos-body"></tbody>
@@ -228,10 +241,9 @@ function agregarPago(pago = null) {
 
   tr.innerHTML = `
     <td class="num-pago"></td>
-    <td><input type="date" class="form-control pago-fecha" value="${pago ? pago.fecha : ''}"></td>
-    <td><input type="number" step="0.01" class="form-control pago-importe" value="${pago ? pago.importe : ''}" oninput="actualizarSuma()"></td>
-    <td class="text-center"><input type="checkbox" class="form-check-input pago-efectuado" ${pago && pago.efectuado ? 'checked' : ''} onchange="alCambiarEfectuado(this)"></td>
-    <td><input type="text" class="form-control pago-albaran" value="${pago ? (pago.albaran || '') : ''}"></td>
+    <td><input type="date" class="form-control form-control-sm pago-fecha" value="${pago ? (pago.fecha || '') : ''}"></td>
+    <td><input type="number" step="0.01" class="form-control form-control-sm pago-importe" value="${pago ? pago.importe : ''}"></td>
+    <td><input type="text" class="form-control form-control-sm pago-albaran" value="${pago ? (pago.albaran || '') : ''}"></td>
     <td>
       <div class="input-group input-group-sm">
         <input type="text" class="form-control pago-factura" value="${pago ? (pago.factura_numero || '') : ''}" placeholder="Núm. factura">
@@ -240,10 +252,14 @@ function agregarPago(pago = null) {
         </button>
       </div>
       <input type="hidden" class="pago-factura-uuid" value="${pago ? (pago.factura_uuid || '') : ''}">
-      ${pago && pago.factura_uuid ? `<small class="text-muted d-block" style="font-size:.7rem;">UUID: ${pago.factura_uuid}</small>` : ''}
+      ${pago && pago.factura_uuid ? `<small class="text-muted d-block" style="font-size:.65rem;">UUID: ${pago.factura_uuid}</small>` : ''}
     </td>
     <td>
       <select class="form-select form-select-sm pago-tipo">${opciones}</select>
+    </td>
+    <td><input type="date" class="form-control form-control-sm pago-fecha-pago" value="${pago ? (pago.fecha_pago || '') : ''}"></td>
+    <td class="text-center">
+      <input type="checkbox" class="form-check-input pago-efectuado" ${pago && pago.efectuado ? 'checked' : ''} onchange="alCambiarEfectuado(this)">
     </td>
     <td class="text-center">
       <button type="button" class="btn btn-sm btn-outline-danger btn-eliminar-pago" onclick="eliminarPago(this)">
@@ -251,7 +267,22 @@ function agregarPago(pago = null) {
       </button>
     </td>
   `;
+
   tr.querySelector('.pago-buscar').addEventListener('click', () => buscarFacturaFila(tr));
+
+  // Listener de importe: recalcula suma + controla checkbox
+  const inpImp = tr.querySelector('.pago-importe');
+  const chkEfec = tr.querySelector('.pago-efectuado');
+  const fp = tr.querySelector('.pago-fecha-pago');
+  const actualizarChk = () => {
+    const imp = parseFloat(inpImp.value || 0);
+    if (!chkEfec.checked) {
+      chkEfec.disabled = imp <= 0;
+    }
+  };
+  inpImp.addEventListener('input', () => { actualizarSuma(); actualizarChk(); });
+  actualizarChk();
+
   body.appendChild(tr);
   renumerarPagos();
   actualizarSuma();
@@ -261,11 +292,9 @@ function agregarPago(pago = null) {
 
 async function cambiarEstado(nuevo) {
   if (!CONV_ID) return;
-
   const sel = document.getElementById('select-estado');
   const estadoAnterior = sel.dataset.estadoAnterior || sel.value;
 
-  // Confirmación según el destino
   let msg = `¿Cambiar el estado del convenio a "${nuevo}"?`;
   if (nuevo === 'cancelado') {
     msg = '⚠️ CANCELAR CONVENIO\n\nUn convenio cancelado no se puede reactivar. ¿Continuar?';
@@ -274,7 +303,6 @@ async function cambiarEstado(nuevo) {
   }
 
   if (!confirm(msg)) {
-    // Revertir el select al estado anterior
     sel.value = estadoAnterior;
     return;
   }
@@ -287,7 +315,6 @@ async function cambiarEstado(nuevo) {
     });
     const data = await r.json();
     if (data.ok) {
-      // Recargar para reflejar el nuevo estado en toda la UI
       window.location.reload();
     } else {
       alert(data.error || 'No se pudo cambiar el estado.');
@@ -344,6 +371,16 @@ function eliminarPago(btn) {
 function alCambiarEfectuado(chk) {
   const tr = chk.closest('tr');
   if (chk.checked) {
+    const imp = parseFloat(tr.querySelector('.pago-importe').value || 0);
+    if (imp <= 0) {
+      chk.checked = false;
+      alert('Captura un importe mayor a 0 antes de marcar como efectuado.');
+      return;
+    }
+    const fp = tr.querySelector('.pago-fecha-pago');
+    if (fp && !fp.value) {
+      fp.value = new Date().toISOString().slice(0, 10);
+    }
     aplicarBloqueoFila(tr);
   }
 }
@@ -351,11 +388,11 @@ function alCambiarEfectuado(chk) {
 function aplicarBloqueoFila(tr) {
   tr.classList.add('fila-bloqueada');
   tr.querySelectorAll('input, select, button').forEach(el => {
-    if (el.classList.contains('pago-efectuado')) return; // permitir desmarcar si no está bloqueado
+    if (el.classList.contains('pago-efectuado')) return;
     el.disabled = true;
   });
-  // El checkbox de efectuado se deshabilita una vez marcado
-  tr.querySelector('.pago-efectuado').disabled = true;
+  const chk = tr.querySelector('.pago-efectuado');
+  if (chk) chk.disabled = true;
   tr.querySelector('.btn-eliminar-pago')?.remove();
 }
 
@@ -371,9 +408,6 @@ function aplicarBloqueoTotal() {
 }
 
 function _aplicarDesbloqueo() {
-  console.log('[aplicarDesbloqueo] inicio');
-
-  // 1) Form principal
   let desbloqueados = 0;
   document.querySelectorAll('#form-conv input, #form-conv select, #form-conv textarea')
     .forEach(el => {
@@ -381,17 +415,21 @@ function _aplicarDesbloqueo() {
       el.disabled = false;
       desbloqueados++;
     });
-  console.log('[aplicarDesbloqueo] form principal desbloqueado:', desbloqueados);
 
-  // 2) Filas de pagos
   document.querySelectorAll('#pagos-body tr').forEach(tr => {
     const efectuado = tr.querySelector('.pago-efectuado')?.checked;
-    if (efectuado) return;  // respeta regla 73
+    if (efectuado) return;
 
     tr.classList.remove('fila-bloqueada');
     tr.querySelectorAll('input, select, button').forEach(el => {
       el.disabled = false;
     });
+    // Restaurar control de checkbox según importe
+    const inpImp = tr.querySelector('.pago-importe');
+    const chk = tr.querySelector('.pago-efectuado');
+    if (chk && inpImp) {
+      chk.disabled = parseFloat(inpImp.value || 0) <= 0;
+    }
     if (!tr.querySelector('.btn-eliminar-pago')) {
       const tdAcciones = tr.querySelector('td:last-child');
       if (tdAcciones) {
@@ -403,28 +441,19 @@ function _aplicarDesbloqueo() {
     }
   });
 
-  // 3) Ocultar botón Desbloquear
   const btnDesc = document.getElementById('btn-desbloquear');
   if (btnDesc) btnDesc.style.display = 'none';
 
-  // 4) Recalcular suma
   if (typeof actualizarSuma === 'function') actualizarSuma();
-
-  console.log('[aplicarDesbloqueo] fin');
 }
 
 function desbloquearFormulario() {
-  console.log('[desbloquear] inicio. PASSWORD_CONFIGURADA =', PASSWORD_CONFIGURADA, 'BLOQUEADO =', BLOQUEADO);
-
   if (!PASSWORD_CONFIGURADA) {
-    console.log('[desbloquear] sin password configurada, desbloqueo directo');
     BLOQUEADO = false;
     _aplicarDesbloqueo();
     return;
   }
-
   const pwd = prompt('Contraseña para modificar el convenio:');
-  console.log('[desbloquear] pwd capturada:', pwd ? 'sí' : 'no');
   if (!pwd) return;
 
   fetch('/convenios/verificar-password', {
@@ -432,26 +461,17 @@ function desbloquearFormulario() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({password: pwd}),
   })
-    .then(r => {
-      console.log('[desbloquear] respuesta status:', r.status);
-      return r.json();
-    })
+    .then(r => r.json())
     .then(data => {
-      console.log('[desbloquear] data:', data);
       if (!data.ok) {
         alert(data.error || 'Contraseña incorrecta.');
         return;
       }
       PASSWORD_VALIDADA_TEXTO = pwd;
       BLOQUEADO = false;
-      console.log('[desbloquear] BLOQUEADO ahora =', BLOQUEADO);
       _aplicarDesbloqueo();
-      console.log('[desbloquear] _aplicarDesbloqueo() ejecutado');
     })
-    .catch(err => {
-      console.error('[desbloquear] error:', err);
-      alert('Error al verificar la contraseña: ' + err);
-    });
+    .catch(err => alert('Error al verificar la contraseña: ' + err));
 }
 
 async function buscarFacturaFila(tr) {
@@ -480,34 +500,100 @@ async function buscarFacturaFila(tr) {
 }
 
 async function guardar() {
-  const propietario = document.getElementById('f-propietario').value.trim();
-  const mascota = document.getElementById('f-mascota').value.trim();
-  const fecha = document.getElementById('f-fecha').value;
-  const vencimiento = document.getElementById('f-vencimiento').value;
-  const total = parseFloat(document.getElementById('f-total').value || 0);
-  if (!propietario || !mascota || !fecha || !vencimiento || total <= 0) {
-    alert('Completa propietario, mascota, fecha, vencimiento y monto total.');
-    return;
+  if (GUARDANDO) return;  // ya hay un guardado en progreso
+  GUARDANDO = true;
+
+  // Deshabilitar el botón visualmente (opcional)
+  const btnGuardar = document.querySelector('button[onclick="guardar()"]');
+  const htmlOrig = btnGuardar ? btnGuardar.innerHTML : '';
+  if (btnGuardar) {
+    btnGuardar.disabled = true;
+    btnGuardar.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...';
   }
+
+  const errores = [];
+
+  // --- Campos del convenio ---
+  const propietario = document.getElementById('f-propietario').value.trim();
+  const mascota     = document.getElementById('f-mascota').value.trim();
+  const fecha       = document.getElementById('f-fecha').value;
+  const vencimiento = document.getElementById('f-vencimiento').value;
+  const total       = parseFloat(document.getElementById('f-total').value || 0);
+  const otorga      = document.getElementById('f-otorga').value.trim();
+  const autoriza    = document.getElementById('f-autoriza').value.trim();
+  const lugarPago   = document.getElementById('f-lugar').value;
+
+  if (!propietario) errores.push('• Nombre del propietario');
+  if (!mascota)     errores.push('• Nombre de la mascota');
+  if (!fecha)       errores.push('• Fecha del convenio');
+  if (!vencimiento) errores.push('• Fecha de vencimiento');
+  if (!(total > 0)) errores.push('• Monto total (debe ser mayor a 0)');
+  if (!otorga)      errores.push('• Otorga (quién otorga el crédito)');
+  if (!autoriza)    errores.push('• Autoriza (quién autoriza el crédito)');
+  if (!lugarPago)   errores.push('• Lugar de pago');
+
+  // --- Plan de pagos ---
   const pagos = [];
-  document.querySelectorAll('#pagos-body tr').forEach(tr => {
-    const f = tr.querySelector('.pago-fecha').value;
-    const imp = parseFloat(tr.querySelector('.pago-importe').value || 0);
-    const ef = tr.querySelector('.pago-efectuado').checked;
+  document.querySelectorAll('#pagos-body tr').forEach((tr, idx) => {
+    const fila = idx + 1;
+    const f       = tr.querySelector('.pago-fecha').value;
+    const imp     = parseFloat(tr.querySelector('.pago-importe').value || 0);
+    const ef      = tr.querySelector('.pago-efectuado').checked;
+    const albaran = tr.querySelector('.pago-albaran').value.trim();
+    const factura = tr.querySelector('.pago-factura').value.trim();
+    const tipo    = tr.querySelector('.pago-tipo').value.trim();
+    const fPago   = tr.querySelector('.pago-fecha-pago').value;
+
+    // Solo validamos filas con algo de contenido
+    const filaVacia = !f && !(imp > 0) && !albaran && !factura && !tipo && !fPago && !ef;
+    if (filaVacia) return;
+
+    if (!f)          errores.push(`• Pago #${fila}: fecha acordada`);
+    if (!(imp > 0))  errores.push(`• Pago #${fila}: importe (mayor a 0)`);
+
+    if (ef) {
+      if (!albaran) errores.push(`• Pago #${fila}: albarán (obligatorio si está efectuado)`);
+      if (!tipo)    errores.push(`• Pago #${fila}: tipo de pago (obligatorio si está efectuado)`);
+      if (!fPago)   errores.push(`• Pago #${fila}: fecha del pago (obligatoria si está efectuado)`);
+      // factura es opcional incluso si está efectuado
+    }
+
     if (f && imp > 0) {
       pagos.push({
         id: tr.dataset.pagoId || null,
         fecha: f,
         importe: imp,
         efectuado: ef ? 1 : 0,
-        albaran: tr.querySelector('.pago-albaran').value,
-        factura_numero: tr.querySelector('.pago-factura').value,
+        fecha_pago: fPago || '',
+        albaran: albaran,
+        factura_numero: factura,
         factura_uuid: tr.querySelector('.pago-factura-uuid').value,
-        tipo_pago: tr.querySelector('.pago-tipo').value,
-        pagado_con_tarjeta: /tarjeta/i.test(tr.querySelector('.pago-tipo').value) ? 1 : 0,
+        tipo_pago: tipo,
+        pagado_con_tarjeta: /tarjeta/i.test(tipo) ? 1 : 0,
       });
     }
   });
+
+  // --- Suma de pagos === total ---
+  if (pagos.length) {
+    const suma = pagos.reduce((s, p) => s + p.importe, 0);
+    if (Math.abs(suma - total) > 0.01) {
+      errores.push(
+        `• La suma de pagos ($${suma.toFixed(2)}) no coincide con el total ($${total.toFixed(2)}). Diferencia: $${Math.abs(total - suma).toFixed(2)}`
+      );
+    }
+  }
+
+  // --- Si hay errores, mostrar y abortar ---
+  if (errores.length) {
+    alert(
+      'No se puede guardar. Corrige los siguientes puntos:\n\n' +
+      errores.join('\n')
+    );
+    return;
+  }
+
+  // --- Payload ---
   const payload = {
     id: CONV_ID,
     propietario, mascota,
@@ -517,22 +603,37 @@ async function guardar() {
     telefono: document.getElementById('f-telefono').value,
     direccion: document.getElementById('f-direccion').value,
     nhc: document.getElementById('f-nhc').value,
-    lugar_pago: document.getElementById('f-lugar').value,
+    lugar_pago: lugarPago,
     cuenta_bancaria: document.getElementById('f-cuenta').value,
     notas: document.getElementById('f-notas').value,
+    otorga, autoriza,
     pagos,
     password: PASSWORD_VALIDADA_TEXTO,
   };
-  const r = await fetch('/convenios/guardar', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload),
-  });
-  const data = await r.json();
+
+  let r, data;
+  try {
+    r = await fetch('/convenios/guardar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    data = await r.json();
+  } catch (e) {
+    alert('Error de red al guardar: ' + e);
+    return;
+  } finally {
+    GUARDANDO = false;
+    if (btnGuardar) {
+      btnGuardar.disabled = false;
+      btnGuardar.innerHTML = htmlOrig;
+    }
+  }
+
   if (data.ok) {
     window.location.href = '/convenios';
   } else {
-    alert(data.error || 'Error al guardar.');
+    alert('Error al guardar:\n\n' + (data.error || 'Error desconocido'));
   }
 }
 
@@ -541,12 +642,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('f-fecha').value = new Date().toISOString().slice(0, 10);
   }
 
-  // --- Selector de estado ---
   const sel = document.getElementById('select-estado');
   if (sel) {
     sel.dataset.estadoAnterior = sel.value;
-
-    // Deshabilitar opciones no permitidas
     const transiciones = {
       borrador:  ['impreso', 'cancelado'],
       impreso:   ['firmado', 'borrador', 'cancelado'],
@@ -568,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function eliminarConvenio() {
   if (!CONV_ID) return;
-  if (!confirm('¿Eliminar este convenio en borrador?\n\nEsta acción NO se puede deshacer.\n\nSolo se puede eliminar si está en borrador y no tiene pagos efectuados.')) {
+  if (!confirm('¿Eliminar este convenio en borrador?\n\nEsta acción NO se puede deshacer.')) {
     return;
   }
   try {
@@ -601,7 +699,6 @@ function imprimirConvenio(id) {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     } catch (e) {
-      console.error('No se pudo imprimir:', e);
       window.open(`/convenios/${id}/imprimir?auto=1`, '_blank');
     }
   };

@@ -1,6 +1,7 @@
 """Router de Convenios de Pago."""
 import datetime
 import json
+import traceback
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -26,14 +27,13 @@ router = APIRouter(prefix="/convenios", tags=["convenios"])
 ESTADOS_VALIDOS = ("borrador", "impreso", "firmado", "pagado", "cancelado")
 
 TRANSICIONES_PERMITIDAS = {
-    "borrador":  {"impreso", "cancelado"},
+    "borrador":  {"impreso", "firmado", "cancelado"},
     "impreso":   {"firmado", "borrador", "cancelado"},
     "firmado":   {"pagado", "cancelado"},
-    "pagado":    set(),          # estado terminal
-    "cancelado": set(),          # estado terminal
+    "pagado":    set(),
+    "cancelado": set(),
 }
 
-# Etiquetas legibles para mensajes de error
 ESTADO_LABEL = {
     "borrador":  "Borrador",
     "impreso":   "Impreso",
@@ -41,6 +41,7 @@ ESTADO_LABEL = {
     "pagado":    "Pagado",
     "cancelado": "Cancelado",
 }
+
 
 def _cfg() -> dict:
     try:
@@ -51,28 +52,21 @@ def _cfg() -> dict:
 
 
 def _validar_transicion(conn, cid: int, estado_actual: str, nuevo_estado: str) -> tuple[bool, str]:
-    """
-    Valida si se puede pasar de estado_actual a nuevo_estado.
-    Devuelve (ok, mensaje_error).
-    """
     if nuevo_estado not in ESTADOS_VALIDOS:
         return False, "Estado inválido."
 
     if nuevo_estado == estado_actual:
         return True, ""
 
-    # Estados terminales no permiten transición
     if estado_actual in ("pagado", "cancelado"):
         return False, f"El convenio está {ESTADO_LABEL[estado_actual].lower()} y no se puede modificar su estado."
 
-    # Validar que la transición esté permitida
     if nuevo_estado not in TRANSICIONES_PERMITIDAS.get(estado_actual, set()):
         return False, (
             f"No se puede pasar de '{ESTADO_LABEL.get(estado_actual, estado_actual)}' "
             f"a '{ESTADO_LABEL.get(nuevo_estado, nuevo_estado)}'."
         )
 
-    # Regla especial: no se puede pasar a 'pagado' si hay pagos pendientes
     if nuevo_estado == "pagado":
         est = calcular_estado_pago(conn, cid)
         if est["pendiente"] > 0.01:
@@ -82,6 +76,25 @@ def _validar_transicion(conn, cid: int, estado_actual: str, nuevo_estado: str) -
             )
 
     return True, ""
+
+
+def _to_int_or_none(v):
+    if v in (None, "", "null", "None", 0):
+        return None
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _to_float(v, default=0.0):
+    if v in (None, ""):
+        return default
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return default
+
 
 @router.get("/numero-a-letras")
 def numero_a_letras_endpoint(monto: float = 0):
@@ -100,10 +113,9 @@ def listado(
 ):
     conn = get_conn()
 
-    # Filtros server-side: estado y rango de fechas
     where = []
     params = []
-    if estado and estado in ("borrador", "impreso", "firmado", "pagado", "cancelado"):
+    if estado and estado in ESTADOS_VALIDOS:
         where.append("estado = ?")
         params.append(estado)
     if desde:
@@ -214,19 +226,95 @@ def buscar_cliente(q: str = "", rfc: str = ""):
 
 @router.post("/guardar")
 async def guardar(request: Request):
-    data = await request.json()
-    conn = get_conn()
+    conn = None
     try:
-        cid = data.get("id")
+        try:
+            data = await request.json()
+        except Exception as e:
+            return JSONResponse(
+                {"ok": False, "error": f"JSON inválido: {e}"},
+                status_code=400,
+            )
 
-        total = float(data.get("monto_total") or 0)
+        cid = _to_int_or_none(data.get("id"))
+        if data.get("id") not in (None, "", "null", "None", 0) and cid is None:
+            return JSONResponse(
+                {"ok": False, "error": f"ID de convenio inválido: {data.get('id')!r}"},
+                status_code=400,
+            )
+
+        total = _to_float(data.get("monto_total"))
         letra = data.get("monto_letra") or numero_a_letras(total)
+
         pagos = data.get("pagos") or []
-        suma_pagos = sum(float(p.get("importe") or 0) for p in pagos)
+        if not isinstance(pagos, list):
+            return JSONResponse(
+                {"ok": False, "error": "El campo 'pagos' debe ser una lista."},
+                status_code=400,
+            )
+
+        # Normalizar pagos: cada pago debe ser dict
+        pagos_norm = []
+        for p in pagos:
+            if not isinstance(p, dict):
+                continue
+            pagos_norm.append(p)
+        pagos = pagos_norm
+
+        suma_pagos = sum(_to_float(p.get("importe")) for p in pagos)
 
         if pagos and abs(suma_pagos - total) > 0.01:
             return JSONResponse(
-                {"ok": False, "error": f"La suma de pagos (${suma_pagos:.2f}) no coincide con el total (${total:.2f})."},
+                {"ok": False, "error": (
+                    f"La suma de pagos (${suma_pagos:.2f}) no coincide con el total "
+                    f"(${total:.2f}). Diferencia: ${abs(total - suma_pagos):.2f}."
+                )},
+                status_code=400,
+            )
+
+        conn = get_conn()
+
+        # --- Validaciones de campos obligatorios ---
+        faltantes = []
+        if not (data.get("propietario") or "").strip():
+            faltantes.append("propietario")
+        if not (data.get("mascota") or "").strip():
+            faltantes.append("mascota")
+        if not data.get("fecha"):
+            faltantes.append("fecha")
+        if not data.get("fecha_vencimiento"):
+            faltantes.append("fecha_vencimiento")
+        if total <= 0:
+            faltantes.append("monto_total (>0)")
+        if not (data.get("otorga") or "").strip():
+            faltantes.append("otorga")
+        if not (data.get("autoriza") or "").strip():
+            faltantes.append("autoriza")
+
+        if faltantes:
+            return JSONResponse(
+                {"ok": False, "error": "Campos obligatorios faltantes: " + ", ".join(faltantes)},
+                status_code=400,
+            )
+
+        # --- Validaciones del plan de pagos ---
+        errores_pagos = []
+        for i, p in enumerate(pagos, 1):
+            if not p.get("fecha"):
+                errores_pagos.append(f"Pago #{i}: falta fecha acordada")
+            if _to_float(p.get("importe")) <= 0:
+                errores_pagos.append(f"Pago #{i}: importe debe ser mayor a 0")
+            if p.get("efectuado"):
+                if not (p.get("albaran") or "").strip():
+                    errores_pagos.append(f"Pago #{i}: falta albarán (obligatorio si está efectuado)")
+                if not (p.get("tipo_pago") or "").strip():
+                    errores_pagos.append(f"Pago #{i}: falta tipo de pago (obligatorio si está efectuado)")
+                if not p.get("fecha_pago"):
+                    errores_pagos.append(f"Pago #{i}: falta fecha del pago (obligatoria si está efectuado)")
+
+        if errores_pagos:
+            return JSONResponse(
+                {"ok": False, "error": "Errores en el plan de pagos:\n" + "\n".join(errores_pagos)},
                 status_code=400,
             )
 
@@ -254,12 +342,14 @@ async def guardar(request: Request):
                 )
                 if cambio_estructural:
                     return JSONResponse(
-                        {"ok": False, "error": f"No se puede modificar un convenio en estado '{estado_actual}'. Solo puedes marcar/desmarcar pagos."},
+                        {"ok": False, "error": (
+                            f"No se puede modificar un convenio en estado '{estado_actual}'. "
+                            f"Solo puedes marcar/desmarcar pagos."
+                        )},
                         status_code=409,
                     )
 
-            # 2) Si hay pagos efectuados, se requiere contraseña y no se puede
-            #    cambiar monto/fecha/propietario/mascota (regla 75).
+            # 2) Si hay pagos efectuados, se requiere contraseña
             if convenio_tiene_pagos_efectuados(conn, cid):
                 if password_configurada() and not verificar_password(data.get("password", "")):
                     return JSONResponse(
@@ -292,6 +382,8 @@ async def guardar(request: Request):
             data.get("lugar_pago", "recepcion"),
             data.get("cuenta_bancaria", ""),
             data.get("notas", ""),
+            data.get("otorga", ""),
+            data.get("autoriza", ""),
         )
 
         if cid:
@@ -299,6 +391,7 @@ async def guardar(request: Request):
                 """UPDATE convenios SET fecha=?, propietario=?, telefono=?,
                    direccion=?, mascota=?, nhc=?, monto_total=?, monto_letra=?,
                    fecha_vencimiento=?, lugar_pago=?, cuenta_bancaria=?, notas=?,
+                   otorga=?, autoriza=?,
                    actualizado_en=CURRENT_TIMESTAMP
                    WHERE id=?""",
                 campos + (cid,),
@@ -309,13 +402,13 @@ async def guardar(request: Request):
                 """INSERT INTO convenios
                    (fecha, propietario, telefono, direccion, mascota, nhc,
                     monto_total, monto_letra, fecha_vencimiento, lugar_pago,
-                    cuenta_bancaria, notas, folio)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    cuenta_bancaria, notas, otorga, autoriza, folio)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 campos + (folio,),
             )
             cid = cur.lastrowid
 
-        # --- Upsert de pagos (respeta los efectuados) ---
+        # --- Upsert de pagos ---
         pagos_existentes = {
             r["id"]: dict(r)
             for r in conn.execute(
@@ -325,12 +418,11 @@ async def guardar(request: Request):
 
         ids_enviados = set()
         for i, p in enumerate(pagos, 1):
-            pid = p.get("id")
+            pid = _to_int_or_none(p.get("id"))
             if pid and pid in pagos_existentes:
                 ids_enviados.add(pid)
                 existente = pagos_existentes[pid]
                 if existente["efectuado"]:
-                    # No se toca un pago efectuado
                     continue
                 conn.execute(
                     """UPDATE convenios_pagos SET numero=?, fecha=?, importe=?,
@@ -338,7 +430,7 @@ async def guardar(request: Request):
                        factura_uuid=?, tipo_pago=?, pagado_con_tarjeta=?
                        WHERE id=?""",
                     (
-                        i, p.get("fecha", ""), float(p.get("importe") or 0),
+                        i, p.get("fecha", ""), _to_float(p.get("importe")),
                         1 if p.get("efectuado") else 0,
                         p.get("fecha_pago", "") if p.get("efectuado") else "",
                         p.get("albaran", ""), p.get("factura_numero", ""),
@@ -354,7 +446,7 @@ async def guardar(request: Request):
                         albaran, factura_numero, factura_uuid, tipo_pago, pagado_con_tarjeta)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        cid, i, p.get("fecha", ""), float(p.get("importe") or 0),
+                        cid, i, p.get("fecha", ""), _to_float(p.get("importe")),
                         1 if p.get("efectuado") else 0,
                         p.get("fecha_pago", "") if p.get("efectuado") else "",
                         p.get("albaran", ""), p.get("factura_numero", ""),
@@ -364,15 +456,30 @@ async def guardar(request: Request):
                 )
                 ids_enviados.add(cur.lastrowid)
 
-        # Borrar los que ya no vienen en el payload (solo si no están efectuados)
         for pid, p in pagos_existentes.items():
             if pid not in ids_enviados and not p["efectuado"]:
                 conn.execute("DELETE FROM convenios_pagos WHERE id=?", (pid,))
 
         conn.commit()
         return JSONResponse({"ok": True, "id": cid})
+
+    except Exception as e:
+        traceback.print_exc()
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return JSONResponse(
+            {"ok": False, "error": f"Error interno: {type(e).__name__}: {e}"},
+            status_code=500,
+        )
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # ---------- Imprimir ----------
@@ -443,7 +550,6 @@ async def marcar_pago(cid: int, pid: int, request: Request):
 
     conn = get_conn()
     try:
-        # Verificar que el convenio no esté cancelado
         conv = conn.execute("SELECT estado FROM convenios WHERE id=?", (cid,)).fetchone()
         if not conv:
             return JSONResponse({"ok": False, "error": "Convenio no encontrado."}, status_code=404)
@@ -464,14 +570,27 @@ async def marcar_pago(cid: int, pid: int, request: Request):
         )
 
         est = calcular_estado_pago(conn, cid)
-        if est["pendiente"] <= 0.01 and est["n_pagos"] > 0 and conv["estado"] != "pagado":
+        estado_actual = conv["estado"]
+
+        # NUEVO: si se marca un pago como efectuado y el convenio está en
+        # borrador o impreso, pasarlo a 'firmado' (refleja que ya hay
+        # movimiento real).
+        if efectuado and estado_actual in ("borrador", "impreso"):
+            conn.execute(
+                "UPDATE convenios SET estado='firmado', actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
+                (cid,),
+            )
+            estado_actual = "firmado"
+
+        # Si el saldo quedó en 0, pasar a 'pagado' (esto ya existía)
+        if est["pendiente"] <= 0.01 and est["n_pagos"] > 0 and estado_actual != "pagado":
             conn.execute(
                 "UPDATE convenios SET estado='pagado', actualizado_en=CURRENT_TIMESTAMP WHERE id=?",
                 (cid,),
             )
 
         conn.commit()
-        return JSONResponse({"ok": True, "estado_pago": est})
+        return JSONResponse({"ok": True, "estado_pago": est, "estado_convenio": estado_actual})
     finally:
         conn.close()
 
@@ -519,10 +638,9 @@ def exportar_excel(
 
     conn = get_conn()
 
-    # Mismos filtros que el listado
     where = []
     params = []
-    if estado and estado in ("borrador", "impreso", "firmado", "pagado", "cancelado"):
+    if estado and estado in ESTADOS_VALIDOS:
         where.append("estado = ?")
         params.append(estado)
     if desde:
@@ -539,7 +657,6 @@ def exportar_excel(
 
     rows = conn.execute(sql, params).fetchall()
 
-    # Filtro por texto (client-side en el listado, aquí lo aplicamos en Python)
     if q:
         ql = q.lower().strip()
         rows = [
@@ -550,14 +667,13 @@ def exportar_excel(
 
     wb = Workbook()
 
-    # Hoja 1: Convenios
     ws = wb.active
     assert ws is not None
     ws.title = "Convenios"
 
     headers = ["Folio", "Fecha", "Propietario", "Teléfono", "Mascota", "NHC",
                "Monto total", "Pagado", "Pendiente", "Vencimiento",
-               "Estado", "Lugar de pago", "Notas"]
+               "Estado", "Lugar de pago", "Otorga", "Autoriza", "Notas"]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -579,24 +695,23 @@ def exportar_excel(
             r["fecha_vencimiento"] or "",
             r["estado"] or "",
             r["lugar_pago"] or "",
+            r["otorga"] or "",
+            r["autoriza"] or "",
             r["notas"] or "",
         ])
 
-    # Formato de moneda
     for row in ws.iter_rows(min_row=2, min_col=7, max_col=9):
         for cell in row:
             cell.number_format = '"$"#,##0.00'
 
-    # Anchos de columna
-    anchos = [14, 12, 30, 14, 18, 10, 14, 14, 14, 14, 12, 16, 30]
+    anchos = [14, 12, 30, 14, 18, 10, 14, 14, 14, 14, 12, 16, 25, 25, 30]
     for i, w in enumerate(anchos, 1):
         ws.column_dimensions[chr(64 + i)].width = w
 
     ws.freeze_panes = "A2"
 
-    # Hoja 2: Pagos
     ws2 = wb.create_sheet("Pagos")
-    headers2 = ["Folio", "Propietario", "# Pago", "Fecha", "Importe",
+    headers2 = ["Folio", "Propietario", "# Pago", "Fecha acordada", "Importe",
                 "Efectuado", "Fecha de pago", "Albarán", "Factura",
                 "UUID factura", "Tipo de pago"]
     ws2.append(headers2)
@@ -637,7 +752,6 @@ def exportar_excel(
 
     conn.close()
 
-    # Guardar en memoria
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -650,28 +764,10 @@ def exportar_excel(
     )
 
 
-# ---------- Reportes (árbol Año → Mes → Estado) ----------
+# ---------- Reportes (árbol) ----------
 
 @router.get("/arbol")
 def arbol_convenios():
-    """Árbol Año → Mes → Estado con conteos y montos.
-
-    Estructura:
-        {
-          "2026": {
-            "11": {
-              "borrador": {"n": 2, "total": 5000.0},
-              "pagado":   {"n": 1, "total": 1200.0},
-              "_total":   {"n": 3, "total": 6200.0}
-            },
-            "_total": {"n": 3, "total": 6200.0}
-          },
-          "_total": {"n": 3, "total": 6200.0}
-        }
-
-    El `_total` raíz es obligatorio: sin él, el footer del modal sale en 0
-    (regla 21 de CONTEXTO.md).
-    """
     conn = get_conn()
     filas = conn.execute("""
         SELECT fecha, estado, monto_total
@@ -685,31 +781,27 @@ def arbol_convenios():
         fecha = (r["fecha"] or "").strip()
         if len(fecha) < 7:
             continue
-        a = fecha[:4]          # "2026"
-        m = fecha[5:7]         # "11"
+        a = fecha[:4]
+        m = fecha[5:7]
         est = (r["estado"] or "borrador").strip().lower()
         t = round(float(r["monto_total"] or 0), 2)
 
-        # Nivel estado
         arbol.setdefault(a, {}) \
              .setdefault(m, {}) \
              .setdefault(est, {"n": 0, "total": 0.0})
         arbol[a][m][est]["n"] += 1
         arbol[a][m][est]["total"] = round(arbol[a][m][est]["total"] + t, 2)
 
-        # _total del mes
         arbol[a][m].setdefault("_total", {"n": 0, "total": 0.0})
         arbol[a][m]["_total"]["n"] += 1
         arbol[a][m]["_total"]["total"] = round(
             arbol[a][m]["_total"]["total"] + t, 2)
 
-        # _total del año
         arbol[a].setdefault("_total", {"n": 0, "total": 0.0})
         arbol[a]["_total"]["n"] += 1
         arbol[a]["_total"]["total"] = round(
             arbol[a]["_total"]["total"] + t, 2)
 
-    # _total raíz
     arbol["_total"] = {
         "n": sum(v["_total"]["n"] for k, v in arbol.items() if k != "_total"),
         "total": round(

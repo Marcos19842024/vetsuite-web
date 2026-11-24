@@ -280,6 +280,11 @@
         id="detalle-guardar">Guardar cambios
       </button>
       <button
+        class="btn btn-outline-secondary btn-sm"
+        id="detalle-toggle-institucional">
+        <i class="ti ti-building me-1" style="font-size: 1.15rem;"></i> Marcar como institucional
+      </button>
+      <button
         class="btn btn-outline-success btn-sm"
         id="detalle-verificar-qvet">
         <i class="ti ti-check me-1" style="font-size: 1.15rem;"></i> Verificado en QVET
@@ -373,7 +378,8 @@
       tr.innerHTML = `
         <td>
           ${f.nombre}
-          ${f.es_convenio ? '<span class="badge bg-primary ms-1" title="Tiene convenio activo"><i class="ti ti-file-text"></i></span>' : ''}
+          ${f.es_convenio ? `<span class="badge bg-primary text-white ms-1" title="Tiene convenio activo">
+            <i class="ti ti-file-text me-1"></i>${f.convenio_folio || 'Convenio'}</span>` : ''}
         </td>
         <td>${f.telefono || '<span class="text-muted">—</span>'}</td>
         <td class="text-center">${f.n_albaranes}</td>
@@ -457,9 +463,37 @@
     }
     if (data.cliente.es_institucional) {
       ban.innerHTML += `<div class="alert alert-secondary small mb-2">
-        Cliente institucional. No aplica cobranza por recepción.
+        <i class="ti ti-building me-1" style="font-size: 1.15rem;"></i>Cliente institucional. No aplica cobranza por recepción.
       </div>`;
     }
+
+    const btnInst = $("#detalle-toggle-institucional");
+    const esInstitucional = data.cliente.es_institucional === 1;
+    btnInst.innerHTML = esInstitucional
+      ? '<i class="ti ti-building-off me-1" style="font-size: 1.15rem;"></i> Desmarcar institucional'
+      : '<i class="ti ti-building me-1" style="font-size: 1.15rem;"></i> Marcar como institucional';
+    btnInst.classList.toggle("btn-outline-secondary", !esInstitucional);
+    btnInst.classList.toggle("btn-outline-warning", esInstitucional);
+
+    btnInst.onclick = async () => {
+      const nuevoValor = esInstitucional ? 0 : 1;
+      const accion = nuevoValor ? "marcar como institucional" : "desmarcar institucional";
+      if (!confirm(`¿${accion.charAt(0).toUpperCase() + accion.slice(1)} a "${data.cliente.nombre}"?`)) return;
+
+      const r = await fetch(`/cuentas_por_cobrar/${data.cliente.id}/institucional`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({institucional: nuevoValor, usuario: ""}),
+      });
+      const res = await r.json();
+      if (!res.ok) {
+        alert(res.error || "No se pudo cambiar.");
+        return;
+      }
+      // Recargar el modal y el listado
+      await abrirDetalle(data.cliente.id);
+      await cargar();
+    };
 
     // Albaranes (ahora con las columnas nuevas)
     const ab = $("#detalle-albaranes");

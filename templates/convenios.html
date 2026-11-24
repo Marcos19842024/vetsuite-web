@@ -8,7 +8,7 @@
       <h2 class="page-title">
         Convenios de pago
         {% if alertas %}
-          <div class="btn-list">
+          <div class="btn-list text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
             <span class="text-secondary fw-normal" style="font-size: .85rem; margin-left: .75rem;">
               Alertas de cobranza ({{ alertas|length }}).
             </span>
@@ -55,12 +55,10 @@
     
     <div class="ms-auto btn-list">
       {% if alertas %}
-      <a href="/convenios/{{ a.id }}/editar" class="btn btn-sm btn-outline-primary">Ver</a>
-      <button class="btn btn-sm btn-outline-secondary" onclick="marcarVista({{ a.id }})" title="Marcar como vista">
-        <i class="ti ti-check" style="font-size: 1.15rem;"></i>
-      </button>
-      <button class="btn btn-sm btn-outline-secondary" onclick="marcarTodasVistas()">
-        Marcar todas como vistas
+      <button class="btn btn-sm btn-outline-secondary" onclick="marcarTodasVistas()"
+              title="Marca todas las alertas como vistas (no se vuelven a mostrar hoy)">
+        <i class="ti ti-check me-1" style="font-size: 1.15rem;"></i>
+        Marcar todas como vistas ({{ alertas|length }})
       </button>
       <span class="vr mx-2"></span>
       {% endif %}

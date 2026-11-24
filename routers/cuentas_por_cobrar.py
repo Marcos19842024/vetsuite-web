@@ -189,10 +189,8 @@ def datos(
             params.append(hasta)
         if solo_vencidas:
             where.append("saldo > 0")
-        if not incluir_institucionales:
-            where.append("es_institucional = 0")
-        if not incluir_convenios:
-            where.append("es_convenio = 0")
+        # Por ahora los convenios e institucionales se ven siempre (atenuados en el frontend).
+        # El filtro se activará cuando implementemos permisos por rol.
 
         sql = f"SELECT * FROM cpc_clientes WHERE {' AND '.join(where)} ORDER BY dias_antiguedad DESC, nombre ASC"
         rows = conn.execute(sql, params).fetchall()
@@ -318,11 +316,16 @@ async def importar(archivo: UploadFile = File(...)):
                 saldo = COALESCE((SELECT SUM(deuda) FROM cpc_albaranes WHERE cpc_cliente_id = cpc_clientes.id), 0)
         """)
 
-        # Clientes con saldo 0 → pagado
+        # Cruce con Convenios PRIMERO (para que los convenios no se pisen a pagado)
+        cruce = cruce_convenios.cruzar_todos(conn)
+
+        # Clientes con saldo 0 → pagado (excluye convenio)
         conn.execute("""
             UPDATE cpc_clientes SET estado = 'pagado'
             WHERE saldo <= 0 AND estado NOT IN ('pagado','institucional','convenio')
         """)
+
+        conn.commit()
 
         # Registrar importación
         conn.execute(
@@ -336,9 +339,6 @@ async def importar(archivo: UploadFile = File(...)):
              alb_nuevos, alb_actualizados, parsed["omitidos"]),
         )
         conn.commit()
-
-        # Cruce con Convenios de Pago
-        cruce = cruce_convenios.cruzar_todos(conn)
 
         return JSONResponse({
             "ok": True,
@@ -403,6 +403,26 @@ async def cambiar_estado(cid: int, request: Request):
 
     conn = get_conn()
     try:
+        cli = conn.execute(
+            "SELECT es_institucional FROM cpc_clientes WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        if not cli:
+            return JSONResponse({"ok": False, "error": "Cliente no encontrado."}, status_code=404)
+
+        # Si el cliente es institucional, no se puede cambiar a otro estado
+        if cli["es_institucional"] and nuevo_estado and nuevo_estado != "institucional":
+            return JSONResponse(
+                {"ok": False, "error": "Este cliente es institucional. Desmárcalo primero para cambiar su estado."},
+                status_code=409,
+            )
+
+        if nuevo_estado == "institucional":
+            return JSONResponse(
+                {"ok": False, "error": "Para marcar un cliente como institucional usa el botón 'Marcar como institucional'."},
+                status_code=400,
+            )
+
         if nuevo_estado:
             ok, msg = bitacora.puede_cambiar_a(conn, cid, nuevo_estado)
             if not ok:
@@ -524,5 +544,88 @@ def limpiar_basura():
 
         conn.commit()
         return JSONResponse({"ok": True, "eliminados": eliminados, "total": len(eliminados)})
+    finally:
+        conn.close()
+
+
+@router.post("/{cid}/institucional")
+async def marcar_institucional(cid: int, request: Request):
+    """
+    Marca/desmarca un cliente como institucional.
+    Solo admin (en el futuro, cuando haya permisos por rol).
+    """
+    data = await request.json()
+    institucional = 1 if data.get("institucional") else 0
+    usuario = (data.get("usuario") or "").strip() or "admin"
+
+    conn = get_conn()
+    try:
+        cli = conn.execute(
+            "SELECT es_institucional, nombre, es_convenio FROM cpc_clientes WHERE id = ?",
+            (cid,),
+        ).fetchone()
+        if not cli:
+            return JSONResponse(
+                {"ok": False, "error": "Cliente no encontrado."},
+                status_code=404,
+            )
+
+        if institucional:
+            # Marcar como institucional:
+            # - es_institucional = 1
+            # - estado = 'institucional'
+            # - limpiar convenio (no puede ser ambas cosas)
+            conn.execute(
+                """UPDATE cpc_clientes
+                   SET es_institucional = 1,
+                       es_convenio = 0,
+                       convenio_folio = '',
+                       estado = 'institucional',
+                       actualizado_en = ?
+                   WHERE id = ?""",
+                (datetime.utcnow().isoformat(timespec="seconds"), cid),
+            )
+            accion = "marcado"
+        else:
+            # Desmarcar:
+            # - es_institucional = 0
+            # - estado = 'pendiente' (el cruce con convenios se hace después)
+            conn.execute(
+                """UPDATE cpc_clientes
+                   SET es_institucional = 0,
+                       estado = 'pendiente',
+                       actualizado_en = ?
+                   WHERE id = ?""",
+                (datetime.utcnow().isoformat(timespec="seconds"), cid),
+            )
+            accion = "desmarcado"
+
+        # Registrar en bitácora
+        bitacora.agregar_entrada(
+            conn, cid,
+            fecha=date.today().isoformat(),
+            hora=datetime.now().strftime("%H:%M"),
+            tipo_contacto="otro",
+            resultado="institucional",
+            observaciones=f"Cliente {accion} como institucional por {usuario}.",
+            usuario=usuario,
+        )
+        bitacora.actualizar_contacto_cliente(conn, cid)
+
+        conn.commit()
+
+        # Si se desmarcó, reverificar convenio (pudo tener uno activo)
+        if not institucional:
+            try:
+                cruce_convenios.cruzar_cliente(conn, cid)
+                conn.commit()
+            except Exception:
+                pass  # no bloquear si falla el cruce
+
+        return JSONResponse({
+            "ok": True,
+            "es_institucional": institucional,
+            "accion": accion,
+        })
     finally:
         conn.close()

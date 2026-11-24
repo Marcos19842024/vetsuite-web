@@ -17,3 +17,9 @@ tail -f /Users/marcos/Applications/vetsuite_web/vetsuite_error.log
 
 En desarrollo
 vetsuite-dev
+
+
+NOTAS:
+
+reacomodar los modulos en permisos ip en el modal para que quepan mas sin que se anche mas el modal
+porque conforme vamos agregando modulos, la lista de modulos permitidos esta en una sola fila

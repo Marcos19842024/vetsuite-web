@@ -264,6 +264,13 @@ def init_db():
     if "pagado_con_tarjeta" not in cols_pagos:
         conn.execute("ALTER TABLE convenios_pagos ADD COLUMN pagado_con_tarjeta INTEGER DEFAULT 0")
 
+    # --- Migraciones Convenios: otorga / autoriza ---
+    _cols_conv = {r[1] for r in conn.execute("PRAGMA table_info(convenios)").fetchall()}
+    if "otorga" not in _cols_conv:
+        conn.execute("ALTER TABLE convenios ADD COLUMN otorga TEXT DEFAULT ''")
+    if "autoriza" not in _cols_conv:
+        conn.execute("ALTER TABLE convenios ADD COLUMN autoriza TEXT DEFAULT ''")
+
 
     # --- Cuentas por Cobrar ---
     conn.execute("""
