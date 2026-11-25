@@ -499,6 +499,8 @@ async function buscarFacturaFila(tr) {
   actualizarSuma();
 }
 
+let GUARDANDO = false;
+
 async function guardar() {
   if (GUARDANDO) return;  // ya hay un guardado en progreso
   GUARDANDO = true;
