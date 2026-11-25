@@ -1066,9 +1066,22 @@ dialog#modal-detalle .modal-body {
 }
 
 dialog#modal-detalle .modal-footer {
+  flex: 0 0 auto;
   position: sticky;
   bottom: 0;
   background: var(--tblr-bg-surface, #ffffff);
   border-top: 1px solid #dee2e6;
   z-index: 2;
+}
+
+/* ============================================================
+   Cuentas por Cobrar — Historial de bitácora
+   ============================================================ */
+.historial-bitacora {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #dee2e6;
+  border-radius: .25rem;
+  padding: .5rem;
+  background: var(--tblr-bg-surface, #ffffff);
 }

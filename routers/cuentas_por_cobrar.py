@@ -11,8 +11,9 @@ from shared.db import get_conn
 from shared.rutas import CPC_DIR
 from shared.templates_shared import templates
 from core.cuentas_por_cobrar.parser_qvet import parsear_excel_qvet
-from core.cuentas_por_cobrar import calculos, bitacora, config
-from core.cuentas_por_cobrar import cruce_convenios
+from core.cuentas_por_cobrar import calculos, bitacora, config, cruce_convenios
+from core.cuentas_por_cobrar import config as cpc_config
+from core.cuentas_por_cobrar import whatsapp as cpc_whatsapp
 
 router = APIRouter(prefix="/cuentas_por_cobrar", tags=["cuentas por cobrar"])
 
@@ -29,17 +30,11 @@ def _fila_cliente_a_dict(r) -> dict:
 
 
 def _decidir_campo(nuevo: str, actual: str, origen: str) -> tuple[str, str]:
-    """
-    Devuelve (valor_final, origen_final).
-    - Si origen == 'manual', respetar el valor actual.
-    - Si nuevo tiene valor, usar nuevo y origen 'qvet'.
-    - Si nuevo está vacío, conservar actual.
-    """
     if origen == "manual":
         return actual, "manual"
     if nuevo:
         return nuevo, "qvet"
-    return actual, origen  # conservar
+    return actual, origen
 
 
 def _upsert_cliente(conn, cli: dict) -> tuple[int, bool]:
@@ -64,7 +59,7 @@ def _upsert_cliente(conn, cli: dict) -> tuple[int, bool]:
 
         conn.execute(
             """UPDATE cpc_clientes SET
-                 nombre = ?, es_institucional = ?, sucursal = ?,
+                 nombre = ?, sucursal = ?,
                  telefono = ?, telefono_origen = ?,
                  email = ?, email_origen = ?,
                  monto_total = ?, monto_cobrado = ?, saldo = ?,
@@ -72,7 +67,7 @@ def _upsert_cliente(conn, cli: dict) -> tuple[int, bool]:
                  dias_antiguedad = ?, semaforo = ?,
                  actualizado_en = ?
                WHERE id = ?""",
-            (cli["nombre"], 1 if cli["es_institucional"] else 0, cli.get("sucursal",""),
+            (cli["nombre"], cli.get("sucursal",""),
              tel_final, tel_origen,
              email_final, email_origen,
              cli["monto_total"], cli["monto_cobrado"], cli["saldo"],
@@ -130,17 +125,31 @@ def _upsert_cliente(conn, cli: dict) -> tuple[int, bool]:
              alb["a_cuenta"], alb["vales"], alb["deuda"]),
         )
 
-    # Si el cliente quedó en saldo 0, marcar como pagado automáticamente
-    # (excepto si ya está en un estado terminal o tiene convenio activo)
-    if cli["saldo"] <= 0 and not cli["es_institucional"]:
+    if cli["saldo"] <= 0:
         conn.execute(
             """UPDATE cpc_clientes
-            SET estado = 'pagado'
-            WHERE id = ? AND estado NOT IN ('pagado', 'cancelado', 'convenio', 'disputa')""",
+               SET estado = 'pagado'
+               WHERE id = ? AND es_institucional = 0
+                 AND estado NOT IN ('pagado', 'cancelado', 'convenio', 'disputa', 'institucional')""",
             (cid,),
         )
 
     return cid, es_nuevo
+
+
+def _buscar_promesa_vigente(conn, cid: int) -> dict | None:
+    """Devuelve la última promesa de pago vigente del cliente o None."""
+    return conn.execute(
+        """SELECT promesa_fecha, promesa_monto
+           FROM cpc_bitacora
+           WHERE cpc_cliente_id = ?
+             AND resultado = 'promesa_pago'
+             AND promesa_fecha != ''
+             AND promesa_fecha >= ?
+           ORDER BY fecha DESC, hora DESC, id DESC
+           LIMIT 1""",
+        (cid, date.today().isoformat()),
+    ).fetchone()
 
 
 # ---------- Página ----------
@@ -189,14 +198,11 @@ def datos(
             params.append(hasta)
         if solo_vencidas:
             where.append("saldo > 0")
-        # Por ahora los convenios e institucionales se ven siempre (atenuados en el frontend).
-        # El filtro se activará cuando implementemos permisos por rol.
 
         sql = f"SELECT * FROM cpc_clientes WHERE {' AND '.join(where)} ORDER BY dias_antiguedad DESC, nombre ASC"
         rows = conn.execute(sql, params).fetchall()
         filas = [_fila_cliente_a_dict(r) for r in rows]
 
-        # Filtro de texto client-side (q) se hace en el frontend, como Convenios.
         totales = {
             "n": len(filas),
             "monto_total": round(sum(f["monto_total"] for f in filas), 2),
@@ -210,6 +216,44 @@ def datos(
         )
     finally:
         conn.close()
+
+
+# ---------- Plantillas WhatsApp ----------
+
+@router.get("/plantillas")
+def listar_plantillas():
+    """Lista las plantillas de WhatsApp disponibles y la activa."""
+    cfg = cpc_config.cargar_config()
+    plantillas = cfg.get("plantillas_whatsapp", {})
+    activa = cfg.get("plantilla_activa", "recordatorio_amable")
+    return JSONResponse(
+        {
+            "ok": True,
+            "plantillas": [
+                {"clave": k, "texto": v} for k, v in plantillas.items()
+            ],
+            "activa": activa,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/plantilla-activa")
+async def guardar_plantilla_activa(request: Request):
+    """Guarda la plantilla activa en el config (server-side)."""
+    data = await request.json()
+    clave = (data.get("plantilla") or "").strip()
+    if not clave:
+        return JSONResponse({"ok": False, "error": "Falta el campo 'plantilla'."}, status_code=400)
+
+    cfg = cpc_config.cargar_config()
+    plantillas = cfg.get("plantillas_whatsapp", {})
+    if clave not in plantillas:
+        return JSONResponse({"ok": False, "error": f"Plantilla '{clave}' no existe."}, status_code=400)
+
+    cfg["plantilla_activa"] = clave
+    cpc_config.guardar_config(cfg)
+    return JSONResponse({"ok": True, "activa": clave})
 
 
 # ---------- Detalle ----------
@@ -228,9 +272,19 @@ def detalle(cid: int):
         ).fetchall()]
         entradas = bitacora.listar_entradas(conn, cid)
         verificado = bitacora.verificado_en_qvet(conn, cid)
+
+        promesa = _buscar_promesa_vigente(conn, cid)
+
         return JSONResponse(
-            {"cliente": cliente, "albaranes": albaranes,
-             "bitacora": entradas, "verificado_en_qvet": verificado},
+            {
+                "cliente": cliente,
+                "albaranes": albaranes,
+                "bitacora": entradas,
+                "verificado_en_qvet": verificado,
+                "tiene_promesa_vigente": promesa is not None,
+                "promesa_fecha": promesa["promesa_fecha"] if promesa else "",
+                "promesa_monto": float(promesa["promesa_monto"]) if promesa else 0,
+            },
             headers={"Cache-Control": "no-store"},
         )
     finally:
@@ -266,7 +320,6 @@ async def importar(archivo: UploadFile = File(...)):
         alb_nuevos = 0
         alb_actualizados = 0
 
-        # Set de albaranes que vienen en este Excel
         codigos_vistos: set[str] = set()
 
         for cli in parsed["clientes"]:
@@ -274,7 +327,6 @@ async def importar(archivo: UploadFile = File(...)):
                 "SELECT id FROM cpc_clientes WHERE idcliente_qvet = ?",
                 (cli["idcliente_qvet"],),
             ).fetchone()
-            # Contar albaranes previos del cliente
             if antes:
                 prev = conn.execute(
                     "SELECT codigo_albaran FROM cpc_albaranes WHERE cpc_cliente_id = ?",
@@ -297,7 +349,6 @@ async def importar(archivo: UploadFile = File(...)):
                     alb_nuevos += 1
                 codigos_vistos.add(alb["codigo_albaran"])
 
-        # Albaranes que ya no vienen: marcar deuda = 0
         all_alb = conn.execute(
             "SELECT id, codigo_albaran FROM cpc_albaranes WHERE deuda > 0"
         ).fetchall()
@@ -308,7 +359,6 @@ async def importar(archivo: UploadFile = File(...)):
                     (r["id"],),
                 )
 
-        # Recalcular saldo de todos los clientes
         conn.execute("""
             UPDATE cpc_clientes
             SET monto_total = COALESCE((SELECT SUM(total_importe) FROM cpc_albaranes WHERE cpc_cliente_id = cpc_clientes.id), 0),
@@ -319,15 +369,15 @@ async def importar(archivo: UploadFile = File(...)):
         # Cruce con Convenios PRIMERO (para que los convenios no se pisen a pagado)
         cruce = cruce_convenios.cruzar_todos(conn)
 
-        # Clientes con saldo 0 → pagado (excluye convenio)
+        # Clientes con saldo 0 → pagado (excluye convenio e institucional)
         conn.execute("""
             UPDATE cpc_clientes SET estado = 'pagado'
-            WHERE saldo <= 0 AND estado NOT IN ('pagado','institucional','convenio')
+            WHERE saldo <= 0 AND es_institucional = 0
+              AND estado NOT IN ('pagado','institucional','convenio','cancelado','disputa')
         """)
 
         conn.commit()
 
-        # Registrar importación
         conn.execute(
             """INSERT INTO cpc_importaciones
                (archivo, fecha, filas_leidas, clientes_nuevos,
@@ -373,10 +423,7 @@ def reverificar_convenios():
 
 @router.post("/{cid}/reverificar-convenio")
 def reverificar_convenio(cid: int):
-    """
-    Vuelve a cruzar un cliente contra convenios.
-    Útil cuando se crea un convenio después de la importación.
-    """
+    """Vuelve a cruzar un cliente contra convenios."""
     conn = get_conn()
     try:
         conv = cruce_convenios.cruzar_cliente(conn, cid)
@@ -391,6 +438,8 @@ def reverificar_convenio(cid: int):
         return JSONResponse({"ok": True, "tiene_convenio": False})
     finally:
         conn.close()
+
+
 # ---------- Estado ----------
 
 @router.post("/{cid}/estado")
@@ -410,7 +459,6 @@ async def cambiar_estado(cid: int, request: Request):
         if not cli:
             return JSONResponse({"ok": False, "error": "Cliente no encontrado."}, status_code=404)
 
-        # Si el cliente es institucional, no se puede cambiar a otro estado
         if cli["es_institucional"] and nuevo_estado and nuevo_estado != "institucional":
             return JSONResponse(
                 {"ok": False, "error": "Este cliente es institucional. Desmárcalo primero para cambiar su estado."},
@@ -438,7 +486,7 @@ async def cambiar_estado(cid: int, request: Request):
         if notas is not None:
             conn.execute("UPDATE cpc_clientes SET notas_internas = ? WHERE id = ?",
                          (notas, cid))
-            
+
         if "telefono" in payload:
             conn.execute(
                 "UPDATE cpc_clientes SET telefono = ?, telefono_origen = 'manual' WHERE id = ?",
@@ -486,7 +534,6 @@ async def agregar_bitacora(cid: int, request: Request):
 
         bitacora.actualizar_contacto_cliente(conn, cid)
 
-        # Sugerencia si es pago
         sugerencia = None
         if payload.get("resultado") == "pago_realizado":
             sugerencia = "¿Marcar al cliente como pagado? El saldo se actualizará en la próxima importación."
@@ -516,6 +563,8 @@ async def verificar_qvet(cid: int, request: Request):
     finally:
         conn.close()
 
+
+# ---------- Limpiar basura ----------
 
 @router.post("/limpiar-basura")
 def limpiar_basura():
@@ -548,12 +597,11 @@ def limpiar_basura():
         conn.close()
 
 
+# ---------- Institucional ----------
+
 @router.post("/{cid}/institucional")
 async def marcar_institucional(cid: int, request: Request):
-    """
-    Marca/desmarca un cliente como institucional.
-    Solo admin (en el futuro, cuando haya permisos por rol).
-    """
+    """Marca/desmarca un cliente como institucional."""
     data = await request.json()
     institucional = 1 if data.get("institucional") else 0
     usuario = (data.get("usuario") or "").strip() or "admin"
@@ -571,10 +619,6 @@ async def marcar_institucional(cid: int, request: Request):
             )
 
         if institucional:
-            # Marcar como institucional:
-            # - es_institucional = 1
-            # - estado = 'institucional'
-            # - limpiar convenio (no puede ser ambas cosas)
             conn.execute(
                 """UPDATE cpc_clientes
                    SET es_institucional = 1,
@@ -587,9 +631,6 @@ async def marcar_institucional(cid: int, request: Request):
             )
             accion = "marcado"
         else:
-            # Desmarcar:
-            # - es_institucional = 0
-            # - estado = 'pendiente' (el cruce con convenios se hace después)
             conn.execute(
                 """UPDATE cpc_clientes
                    SET es_institucional = 0,
@@ -600,7 +641,6 @@ async def marcar_institucional(cid: int, request: Request):
             )
             accion = "desmarcado"
 
-        # Registrar en bitácora
         bitacora.agregar_entrada(
             conn, cid,
             fecha=date.today().isoformat(),
@@ -614,18 +654,144 @@ async def marcar_institucional(cid: int, request: Request):
 
         conn.commit()
 
-        # Si se desmarcó, reverificar convenio (pudo tener uno activo)
         if not institucional:
             try:
                 cruce_convenios.cruzar_cliente(conn, cid)
                 conn.commit()
             except Exception:
-                pass  # no bloquear si falla el cruce
+                pass
 
         return JSONResponse({
             "ok": True,
             "es_institucional": institucional,
             "accion": accion,
         })
+    finally:
+        conn.close()
+
+
+# ---------- WhatsApp ----------
+
+@router.get("/{cid}/whatsapp")
+def whatsapp_cliente(cid: int, plantilla: str = ""):
+    """
+    Devuelve el mensaje renderizado y la URL de wa.me para un cliente.
+    Si no se especifica plantilla, usa la activa del config.
+    Para la plantilla 'promesa_seguimiento', busca la última promesa
+    de pago vigente en la bitácora del cliente.
+    """
+    conn = get_conn()
+    try:
+        cli = conn.execute("SELECT * FROM cpc_clientes WHERE id = ?", (cid,)).fetchone()
+        if not cli:
+            return JSONResponse(
+                {"ok": False, "error": "Cliente no encontrado."},
+                status_code=404,
+            )
+        cliente = _fila_cliente_a_dict(cli)
+
+        if cliente["es_institucional"]:
+            return JSONResponse(
+                {"ok": False, "error": "Cliente institucional. No aplica cobranza por recepción."},
+                status_code=409,
+            )
+        if cliente["es_convenio"]:
+            return JSONResponse(
+                {"ok": False, "error": "Cliente con convenio activo. Se gestiona desde Convenios."},
+                status_code=409,
+            )
+        if not (cliente.get("telefono") or "").strip():
+            return JSONResponse(
+                {"ok": False, "error": "El cliente no tiene teléfono registrado."},
+                status_code=400,
+            )
+
+        albaranes = [
+            dict(a) for a in conn.execute(
+                "SELECT * FROM cpc_albaranes WHERE cpc_cliente_id = ? ORDER BY fecha_albaran",
+                (cid,),
+            ).fetchall()
+        ]
+
+        cfg = cpc_config.cargar_config()
+        plantillas = cfg.get("plantillas_whatsapp", {})
+        clave = plantilla or cfg.get("plantilla_activa", "recordatorio_amable")
+
+        if clave not in plantillas:
+            return JSONResponse(
+                {"ok": False, "error": f"Plantilla '{clave}' no encontrada."},
+                status_code=400,
+            )
+
+        # Construir contexto base
+        contexto = cpc_whatsapp.construir_contexto(cliente, albaranes)
+
+        # Si la plantilla es de promesa, buscar la promesa vigente
+        if clave == "promesa_seguimiento":
+            promesa = _buscar_promesa_vigente(conn, cid)
+            contexto["promesa_fecha"] = promesa["promesa_fecha"] if promesa else ""
+            contexto["promesa_monto"] = (
+                f"{float(promesa['promesa_monto']):,.2f}" if promesa and promesa["promesa_monto"] else ""
+            )
+
+        # Validar placeholders requeridos
+        ok, faltantes = cpc_whatsapp.validar_placeholders(clave, contexto)
+        if not ok:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": (
+                        f"La plantilla '{clave}' requiere los datos: "
+                        f"{', '.join(faltantes)}. Captúralos primero "
+                        f"(por ejemplo, registrando una promesa de pago en la bitácora)."
+                    ),
+                    "faltantes": faltantes,
+                },
+                status_code=400,
+            )
+
+        mensaje = cpc_whatsapp.renderizar(plantillas[clave], contexto)
+        url = cpc_whatsapp.construir_url(cliente["telefono"], mensaje)
+
+        if not url:
+            return JSONResponse(
+                {"ok": False, "error": "No se pudo construir la URL (teléfono inválido)."},
+                status_code=400,
+            )
+
+        return JSONResponse({
+            "ok": True,
+            "url": url,
+            "mensaje": mensaje,
+            "telefono": cliente["telefono"],
+            "plantilla": clave,
+        })
+    finally:
+        conn.close()
+
+
+@router.post("/{cid}/whatsapp-enviado")
+async def whatsapp_enviado(cid: int, request: Request):
+    """
+    Registra en bitácora que se envió un mensaje por WhatsApp.
+    El resultado queda vacío para que el usuario lo complete después.
+    """
+    data = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    plantilla = (data.get("plantilla") or "").strip()
+    usuario = (data.get("usuario") or "").strip() or "recepción"
+
+    conn = get_conn()
+    try:
+        bitacora.agregar_entrada(
+            conn, cid,
+            fecha=date.today().isoformat(),
+            hora=datetime.now().strftime("%H:%M"),
+            tipo_contacto="whatsapp",
+            resultado="",
+            observaciones=f"Mensaje de WhatsApp enviado (plantilla: {plantilla or 'activa'}).",
+            usuario=usuario,
+        )
+        bitacora.actualizar_contacto_cliente(conn, cid)
+        return JSONResponse({"ok": True})
     finally:
         conn.close()

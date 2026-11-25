@@ -172,7 +172,7 @@
         </div>
 
         <h6 class="mt-3">Albaranes adeudados</h6>
-        <div class="tabla-scroll" style="max-height:280px;">
+        <div class="tabla-scroll" style="max-height:200px;">
           <table class="table table-sm table-hover">
             <thead><tr>
               <th>Albarán</th>
@@ -267,8 +267,12 @@
           </div>
         </form>
 
-        <h6 class="mt-3">Historial</h6>
-        <div id="detalle-bitacora" class="small"></div>
+        <h6 class="mt-3">Historial
+          <span class="badge bg-secondary-lt text-secondary ms-1" id="detalle-bitacora-count"></span>
+        </h6>
+        <div id="detalle-bitacora" class="small historial-bitacora"
+          style="max-height: 180px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: .25rem; padding: .5rem;">
+        </div>
       </div>
     </div>
   </div>
@@ -295,6 +299,18 @@
         title="Busca si este cliente ya tiene un convenio activo">
         <i class="ti ti-file-search me-1" style="font-size: 1.15rem;"></i> Reverificar convenio
       </button>
+      <button class="btn btn-outline-success btn-sm" id="detalle-whatsapp">
+        <i class="ti ti-brand-whatsapp me-1" style="font-size: 1.15rem;"></i> Enviar
+      </button>
+      <div class="dropdown d-inline-block">
+        <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button"
+          id="dd-plantilla" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="ti ti-layout-list me-1" style="font-size: 1.15rem;"></i> <span id="dd-plantilla-label">Amable</span>
+        </button>
+        <ul class="dropdown-menu" id="dd-plantilla-menu" aria-labelledby="dd-plantilla">
+          <!-- Se llena dinámicamente con JS -->
+        </ul>
+      </div>
     </div>
   </div>
 </dialog>
@@ -427,7 +443,6 @@
     $("#detalle-email").value    = data.cliente.email    || "";
     $("#detalle-rfc").value      = data.cliente.rfc      || "";
 
-    // Chips de origen
     const telOrigen = data.cliente.telefono_origen || "";
     const emailOrigen = data.cliente.email_origen || "";
     $("#detalle-telefono-origen").textContent =
@@ -451,7 +466,7 @@
       sel.appendChild(opt);
     }
 
-    // Banner convenio/institucional (placeholder Fase 2)
+    // Banner convenio/institucional
     const ban = $("#detalle-banner-convenio");
     ban.innerHTML = "";
     if (data.cliente.es_convenio) {
@@ -467,6 +482,7 @@
       </div>`;
     }
 
+    // Botón institucional
     const btnInst = $("#detalle-toggle-institucional");
     const esInstitucional = data.cliente.es_institucional === 1;
     btnInst.innerHTML = esInstitucional
@@ -490,12 +506,11 @@
         alert(res.error || "No se pudo cambiar.");
         return;
       }
-      // Recargar el modal y el listado
       await abrirDetalle(data.cliente.id);
       await cargar();
     };
 
-    // Albaranes (ahora con las columnas nuevas)
+    // Albaranes
     const ab = $("#detalle-albaranes");
     ab.innerHTML = "";
     for (const a of data.albaranes) {
@@ -544,11 +559,126 @@
     form.querySelector('[name="fecha"]').value = hoyISO();
 
     $("#modal-detalle").showModal();
+
+    // ---------- WhatsApp ----------
+    const btnWsp = $("#detalle-whatsapp");
+    const ddPlantilla = $("#dd-plantilla");
+    const ddPlantillaLabel = $("#dd-plantilla-label");
+    const ddPlantillaMenu = $("#dd-plantilla-menu");
+
+    const puedeWhatsapp = !data.cliente.es_institucional
+                        && !data.cliente.es_convenio
+                        && (data.cliente.telefono || "").trim();
+    btnWsp.disabled = !puedeWhatsapp;
+    if (!puedeWhatsapp) {
+      let motivo = "Cliente institucional";
+      if (data.cliente.es_convenio) motivo = "Cliente con convenio activo";
+      else if (!(data.cliente.telefono || "").trim()) motivo = "Sin teléfono registrado";
+      btnWsp.title = motivo;
+    }
+
+    let plantillaSeleccionada = localStorage.getItem("vetsuite.cpc.plantilla_activa") || "";
+
+    // Plantillas que requieren promesa vigente
+    const PLANTILLAS_REQUIEREN_PROMESA = ["promesa_seguimiento"];
+
+    fetch("/cuentas_por_cobrar/plantillas")
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) return;
+        ddPlantillaMenu.innerHTML = "";
+        for (const p of d.plantillas) {
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          a.className = "dropdown-item";
+          a.href = "#";
+          a.textContent = p.clave.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+          a.dataset.clave = p.clave;
+
+          const requierePromesa = PLANTILLAS_REQUIEREN_PROMESA.includes(p.clave);
+          const sinPromesa = requierePromesa && !data.tiene_promesa_vigente;
+
+          if (sinPromesa) {
+            a.classList.add("disabled", "text-muted");
+            a.title = "Este cliente no tiene una promesa de pago vigente registrada.";
+            a.addEventListener("click", (e) => e.preventDefault());
+          } else {
+            a.addEventListener("click", (e) => {
+              e.preventDefault();
+              plantillaSeleccionada = p.clave;
+              ddPlantillaLabel.textContent = a.textContent;
+              localStorage.setItem("vetsuite.cpc.plantilla_activa", p.clave);
+              fetch("/cuentas_por_cobrar/plantilla-activa", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({plantilla: p.clave}),
+              });
+            });
+          }
+
+          li.appendChild(a);
+          ddPlantillaMenu.appendChild(li);
+        }
+
+        // Seleccionar la activa
+        const activa = plantillaSeleccionada || d.activa;
+        const li = [...ddPlantillaMenu.querySelectorAll("a[data-clave]")]
+          .find(a => a.dataset.clave === activa && !a.classList.contains("disabled"));
+        if (li) {
+          plantillaSeleccionada = activa;
+          ddPlantillaLabel.textContent = li.textContent;
+        } else {
+          // Si la activa está deshabilitada, no seleccionar ninguna
+          plantillaSeleccionada = "";
+          ddPlantillaLabel.textContent = "Selecciona plantilla";
+        }
+      });
+
+    // Handler del botón WhatsApp
+    btnWsp.onclick = async () => {
+      if (!plantillaSeleccionada) {
+        alert("Selecciona una plantilla primero.");
+        return;
+      }
+
+      // Validación previa
+      if (PLANTILLAS_REQUIEREN_PROMESA.includes(plantillaSeleccionada) && !data.tiene_promesa_vigente) {
+        alert(
+          "La plantilla 'promesa_seguimiento' requiere que el cliente tenga " +
+          "una promesa de pago vigente registrada en la bitácora.\n\n" +
+          "Registra primero una promesa de pago (con fecha y monto) y vuelve a intentarlo."
+        );
+        return;
+      }
+
+      const r = await fetch(`/cuentas_por_cobrar/${data.cliente.id}/whatsapp?plantilla=${encodeURIComponent(plantillaSeleccionada)}`);
+      const res = await r.json();
+      if (!res.ok) {
+        alert(res.error || "No se pudo generar el mensaje.");
+        return;
+      }
+
+      window.open(res.url, "_blank");
+      try { await navigator.clipboard.writeText(res.mensaje); } catch (e) {}
+
+      await fetch(`/cuentas_por_cobrar/${data.cliente.id}/whatsapp-enviado`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({plantilla: plantillaSeleccionada, usuario: ""}),
+      });
+
+      await abrirDetalle(data.cliente.id);
+      await cargar();
+
+      alert("Mensaje abierto en WhatsApp. Recuerda registrar el resultado en la bitácora cuando tengas respuesta.");
+    };
   }
 
   function pintarBitacora(entries) {
     const cont = $("#detalle-bitacora");
+    const count = $("#detalle-bitacora-count");
     cont.innerHTML = "";
+    if (count) count.textContent = entries.length;
     if (!entries.length) {
       cont.innerHTML = '<div class="text-muted">Sin registros todavía.</div>';
       return;

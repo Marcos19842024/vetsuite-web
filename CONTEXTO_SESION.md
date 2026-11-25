@@ -167,6 +167,48 @@ Se completó:
 135. v0.10.x: El listado de Cuentas por Cobrar NO muestra clientes
      institucionales por defecto. Hay un checkbox "Ver institucionales"
      que los incluye (solo visible para admin en el futuro).
+136. v0.10.x: El `_upsert_cliente` de Cuentas por Cobrar NO pisa
+     `es_institucional` ni `es_convenio` en el UPDATE. Solo los
+     establece en el INSERT (clientes nuevos). Las decisiones
+     manuales del admin y el cruce con convenios se respetan en
+     cada reimportación.
+137. v0.10.x: Si un cliente tiene `estado = 'institucional'` pero
+     `es_institucional = 0` (estado inconsistente por un bug
+     anterior), el script de sincronización lo corrige con:
+     UPDATE cpc_clientes SET es_institucional = 1
+     WHERE estado = 'institucional' AND es_institucional = 0.
+138. v0.10.x: El bloque de "saldo 0 → pagado" excluye
+     `es_institucional = 1` y los estados `pagado`, `cancelado`,
+     `convenio`, `disputa`, `institucional`.
+139. v0.10.x: El endpoint `/datos` de Cuentas por Cobrar NO filtra
+     `es_convenio` por defecto. Los convenios se ven en el listado
+     (atenuados). El filtro se activará con permisos por rol
+     (Bloque 5).
+140. v0.10.x: Los badges con fondo de color (`bg-primary`, etc.)
+     requieren `text-white` explícito en el template para que el
+     texto se lea. Aplica a Cuentas por Cobrar y a cualquier otro
+     módulo que use Tabler.
+141. v0.10.x: Cuando se implementen las categorías adicionales
+     (colaborador), migrar de `es_institucional` (booleano) a
+     `categoria` (texto: normal | institucional | colaborador |
+     convenio). Por ahora el booleano + `es_convenio` cubren el caso.
+142. v0.10.x: El módulo de Cuentas por Cobrar tiene WhatsApp integrado
+     con plantillas configurables en `cuentas_por_cobrar_config.json`.
+     Las plantillas disponibles son: recordatorio_amable, recordatorio_firme,
+     recordatorio_multi, promesa_seguimiento, convenio_notificacion.
+143. v0.10.x: Los placeholders de las plantillas son: {cliente},
+     {saldo}, {mascota}, {dias}, {n_albaranes}, {promesa_fecha},
+     {promesa_monto}.
+144. v0.10.x: La plantilla activa vive en localStorage
+     (`vetsuite.cpc.plantilla_activa`) y en el config server-side.
+     Al cambiarla en el dropdown, se actualiza en ambos.
+145. v0.10.x: Al enviar un WhatsApp, se registra automáticamente una
+     entrada en bitácora con tipo='whatsapp' y resultado='' (vacío).
+     El usuario completa el resultado después.
+146. v0.10.x: El botón "Enviar WhatsApp" se deshabilita si el cliente
+     es institucional, tiene convenio activo, o no tiene teléfono.
+147. v0.10.x: La URL de WhatsApp se construye con `normalizar_telefono`
+     y se agrega el prefijo `52` si son 10 dígitos sin lada.
 
 # Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — deuda técnica del refactor)
 
