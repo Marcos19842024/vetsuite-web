@@ -209,6 +209,21 @@ Se completó:
      es institucional, tiene convenio activo, o no tiene teléfono.
 147. v0.10.x: La URL de WhatsApp se construye con `normalizar_telefono`
      y se agrega el prefijo `52` si son 10 dígitos sin lada.
+148. v0.10.x: El historial de bitácora del modal de Cuentas por
+     Cobrar tiene `max-height: 240px` y `overflow-y: auto`. Igual
+     que la tabla de albaranes (`max-height: 220px`). El modal
+     completo usa `height: 85vh` con header y footer fijos.
+149. v0.10.x: Si una regla CSS de `static/style.css` no se aplica
+     (max-height sí, overflow-y no), verificar con
+     `getComputedStyle(el).overflowY`. El síntoma "height real > 0
+     pero scrollHeight > height real" significa que falta
+     `overflow-y: auto`. Solución: agregar la propiedad o usar
+     inline style como workaround.
+150. v0.10.x: La plantilla `promesa_seguimiento` requiere que el
+     cliente tenga una promesa de pago vigente registrada en la
+     bitácora (con `promesa_fecha >= hoy` y `promesa_monto > 0`).
+     Si no, el backend rechaza el envío con 400 y el frontend
+     deshabilita la opción en el dropdown.
 
 # Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — deuda técnica del refactor)
 
