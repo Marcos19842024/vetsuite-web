@@ -63,13 +63,13 @@
                     <td>
                         <code>{{ ip }}</code>
                         {% if ip == ip_actual %}
-                        <span class="badge bg-blue text-white ms-1">tú</span>
+                        <span class="badge bg-blue-lt text-white ms-1">tú</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if entrada.modulos %}
                             {% for m in entrada.modulos %}
-                            <span class="badge bg-secondary text-white me-1">{{ m }}</span>
+                            <span class="badge bg-primary-lt text-white me-1">{{ m }}</span>
                             {% endfor %}
                         {% else %}
                             <span class="text-secondary small">— sin acceso —</span>

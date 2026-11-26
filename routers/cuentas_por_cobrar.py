@@ -175,11 +175,21 @@ def datos(
     solo_vencidas: int = 0,
     incluir_institucionales: int = 0,
     incluir_convenios: int = 0,
+    rol: str = "admin",
 ):
     conn = get_conn()
     try:
         where = ["1=1"]
         params: list = []
+
+        # Recepción no ve institucionales ni convenios
+        if rol != "admin":
+            where.append("es_institucional = 0")
+            where.append("es_convenio = 0")
+        else:
+            if not incluir_institucionales:
+                where.append("es_institucional = 0")
+            # Convenios siempre visibles para admin
 
         if estado:
             where.append("estado = ?")
@@ -294,7 +304,9 @@ def detalle(cid: int):
 # ---------- Importar ----------
 
 @router.post("/importar")
-async def importar(archivo: UploadFile = File(...)):
+async def importar(archivo: UploadFile = File(...), rol: str = "admin"):
+    if rol != "admin":
+        return JSONResponse({"ok": False, "error": "Solo admin puede importar."}, status_code=403)
     assert archivo.filename is not None
     if not archivo.filename.lower().endswith(".xlsx"):
         raise HTTPException(400, "El archivo debe ser .xlsx")

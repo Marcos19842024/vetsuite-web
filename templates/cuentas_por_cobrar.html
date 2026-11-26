@@ -32,9 +32,23 @@
         title="Vuelve a cruzar todos los clientes contra los convenios activos">
         <i class="ti ti-refresh me-1" style="font-size: 1.15rem;"></i> Reverificar convenios
       </button>
+      <button class="btn btn-outline-danger btn-sm" id="btn-limpiar-basura"
+        title="Elimina clientes con ID inválido o sin albaranes (solo admin)">
+        <i class="ti ti-eraser me-1" style="font-size: 1.15rem;"></i> Limpiar basura
+      </button>
     </div>
 
     <div class="ms-auto btn-list">
+      <div class="dropdown d-inline-block ms-2">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                id="dd-rol" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="ti ti-user-shield" style="font-size: 1.15rem;"></i> <span id="dd-rol-label">Admin</span>
+        </button>
+        <ul class="dropdown-menu">
+          <li><a class="dropdown-item" href="#" data-rol="admin">Admin</a></li>
+          <li><a class="dropdown-item" href="#" data-rol="recepcion">Recepción</a></li>
+        </ul>
+      </div>
     </div> 
   </div>
 </div>
@@ -85,6 +99,12 @@
         <label class="form-check mb-0">
           <input type="checkbox" id="f-solo-vencidas" class="form-check-input">
           <span class="form-check-label small">Solo con saldo</span>
+        </label>
+      </div>
+      <div class="col-auto">
+        <label class="form-check mb-0">
+          <input type="checkbox" id="f-incluir-institucionales" class="form-check-input">
+          <span class="form-check-label small">Ver institucionales</span>
         </label>
       </div>
       <div class="col-auto">
@@ -337,6 +357,63 @@
   ];
   const ESTADOS_BLOQUEADOS = new Set(["contactado","promesa_pago","pagado"]);
 
+  let ROL_ACTUAL = localStorage.getItem("vetsuite.rol") || "admin";
+
+  function aplicarRol() {
+    const label = document.getElementById("dd-rol-label");
+    if (label) label.textContent = ROL_ACTUAL === "admin" ? "Admin" : "Recepción";
+
+    const esAdmin = ROL_ACTUAL === "admin";
+
+    // Helper: oculta/muestra un elemento si existe
+    const toggle = (id, visible) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle("d-none", !visible);
+    };
+
+    // Botones solo admin
+    toggle("btn-importar", esAdmin);
+    toggle("btn-limpiar-basura", esAdmin);
+    toggle("btn-reverificar-convenios", esAdmin);
+
+    // En el modal: notas internas y botón institucional solo admin
+    const notas = document.getElementById("detalle-notas");
+    if (notas && notas.closest(".col-md-6")) {
+      notas.closest(".col-md-6").classList.toggle("d-none", !esAdmin);
+    }
+    toggle("detalle-toggle-institucional", esAdmin);
+
+    // Checkbox "Ver institucionales" solo admin
+    const chkInst = document.getElementById("f-incluir-institucionales");
+    if (chkInst) {
+      if (!esAdmin) {
+        chkInst.checked = false;
+        if (chkInst.closest(".col-auto")) {
+          chkInst.closest(".col-auto").classList.add("d-none");
+        }
+      } else {
+        if (chkInst.closest(".col-auto")) {
+          chkInst.closest(".col-auto").classList.remove("d-none");
+        }
+      }
+    }
+
+    if (typeof cargar === "function") cargar();
+  }
+
+  // Handler del selector de rol (delegación de eventos)
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest("a[data-rol]");
+    if (!link) return;
+    e.preventDefault();
+    ROL_ACTUAL = link.dataset.rol;
+    localStorage.setItem("vetsuite.rol", ROL_ACTUAL);
+    aplicarRol();
+  });
+
+  // Al cargar
+  aplicarRol();
+
   // ---------- Cargar datos ----------
   async function cargar() {
     const params = new URLSearchParams();
@@ -345,6 +422,12 @@
     const d = $("#f-desde").value; if (d) params.set("desde", d);
     const h = $("#f-hasta").value; if (h) params.set("hasta", h);
     if ($("#f-solo-vencidas").checked) params.set("solo_vencidas", "1");
+    
+    // NUEVO: ver institucionales
+    if ($("#f-incluir-institucionales")?.checked) params.set("incluir_institucionales", "1");
+
+    // NUEVO: rol
+    params.set("rol", ROL_ACTUAL);
 
     const r = await fetch("/cuentas_por_cobrar/datos?" + params.toString());
     const data = await r.json();
@@ -807,6 +890,21 @@
     $("#f-solo-vencidas").checked = false;
     cargar();
   });
+
+  $("#btn-limpiar-basura").addEventListener("click", async () => {
+    if (!confirm("Se eliminarán los clientes basura (ID inválido o sin albaranes, sin bitácora).\n\n¿Continuar?")) return;
+
+    const r = await fetch("/cuentas_por_cobrar/limpiar-basura", {method: "POST"});
+    const data = await r.json();
+    if (data.ok) {
+      alert(`Eliminados: ${data.total}`);
+      await cargar();
+    } else {
+      alert("Error al limpiar");
+    }
+  });
+
+  $("#f-incluir-institucionales").addEventListener("change", cargar);
 
   cargar();
 })();

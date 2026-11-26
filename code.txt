@@ -22,4 +22,16 @@ vetsuite-dev
 NOTAS:
 
 reacomodar los modulos en permisos ip en el modal para que quepan mas sin que se anche mas el modal
-porque conforme vamos agregando modulos, la lista de modulos permitidos esta en una sola fila
+porque conforme vamos agregando modulos, la lista de modulos permitidos esta en una sola fila.
+
+agregar campo id cliente en convenios, y una seccion para subir documento escaneado (INE),
+si se puede leer desde el escaner de la impresora o abrir la camara, o subir el documento.
+y quitar el campo cuenta bancaria dejarlo informativo ese dato queda guardado en el html fijo, si necesita
+cambiarlo se hara desde el codigo directamente solo si el cliente decide pagar en transferencia se pone en el
+documento impreso. (si el lugar de pago es transferencia o ambos). y tambien falta poner el concepto de la deuda
+en el form y en el documento impreso.
+
+arreglar el error de recordatorios convenios
+INFO:     127.0.0.1:49194 - "GET /recordatorios/whatsapp/convenios/0 HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49200 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+Failed to load resource: the server responded with a status of 400 (Bad Request)

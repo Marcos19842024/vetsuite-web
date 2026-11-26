@@ -1,3 +1,5 @@
+(`Última actualización: 2026-11-20` → `2026-11-25`) y agregamos la sección 19 al índice.
+
 # VetSuite Web — Contexto del proyecto
 
 Versión: v0.9.x
@@ -29,6 +31,7 @@ CONTEXTO_SESION.md.
 16. Pendientes
 17. Convenios de Pago (/convenios)
 18. Recordatorios: pestaña Libres (plantillas)
+19. Cuentas por Cobrar (`/cuentas_por_cobrar`)
 
 ---
 
@@ -1239,3 +1242,260 @@ editables.
 6. El parser de Excel de clientes acepta nombre + múltiples columnas de
    teléfono, limpia formatos sucios y descarta números inválidos
    (< 7 dígitos).
+
+---
+
+## 19. Cuentas por Cobrar (`/cuentas_por_cobrar`)
+
+Módulo para gestionar la cobranza de adeudos de clientes. Importa el
+listado de deudas de QVET (Excel), agrupa por cliente, permite
+registrar gestiones de cobranza (bitácora), enviar WhatsApp con
+plantillas configurables, y marcar clientes como institucionales
+(cobranza por administración) o convenio (cobranza por convenio de
+pago).
+
+### 19.1. Modelo de datos
+
+Cinco tablas en SQLite:
+
+**`cpc_clientes`** (una fila por cliente deudor, agrupado por `IDCLIENTE`):
+- `idcliente_qvet` (UNIQUE) — llave natural del Excel de QVET.
+- `nombre`, `telefono`, `email`, `rfc`, `sucursal`.
+- `telefono_origen`, `email_origen` — `'qvet'` o `'manual'` (política C).
+- `es_institucional`, `es_convenio`, `convenio_folio`.
+- `monto_total`, `monto_cobrado`, `saldo`, `n_albaranes`.
+- `fecha_mas_antigua`, `dias_antiguedad`, `semaforo`.
+- `estado`, `prioridad`, `ultimo_contacto`, `proximo_contacto`.
+- `notas_internas` (solo admin).
+- `importado_en`, `actualizado_en`.
+
+**`cpc_albaranes`** (una fila por albarán adeudado):
+- `codigo_albaran` (UNIQUE), `num_albaran`, `idmascota_qvet`,
+  `paciente`, `nhc`, `fecha_albaran`, `fecha_factura`,
+  `numero_factura`, `observaciones_factura`.
+- `total_importe`, `cobrado_linea`, `a_cuenta`, `vales`, `deuda`.
+- `cpc_cliente_id` (FK con `ON DELETE CASCADE`).
+
+**`cpc_bitacora`** (una fila por intento de contacto):
+- `cpc_cliente_id` (FK), `fecha`, `hora`.
+- `tipo_contacto` (llamada, whatsapp, email, visita, sms, otro).
+- `resultado` (sin_respuesta, contestado, buzon, numero_equivocado,
+  promesa_pago, pago_realizado, no_le_interesa, disputa,
+  verificado_en_qvet, es_convenio, institucional).
+- `promesa_fecha`, `promesa_monto`, `observaciones`, `usuario`.
+- `adjunto` (ruta, reservado para Bloque 4 — no implementado).
+
+**`cpc_adjuntos`** (reservada para Bloque 4 — no implementada).
+
+**`cpc_importaciones`** (historial de cargas de Excel):
+- `archivo`, `fecha`, `filas_leidas`, `clientes_nuevos`,
+  `clientes_actualizados`, `albaranes_nuevos`,
+  `albaranes_actualizados`, `omitidos`.
+
+### 19.2. Estructura de archivos
+core/cuentas_por_cobrar/
+init.py
+parser_qvet.py # parseo del Excel de QVET
+calculos.py # semáforo, antigüedad, normalización
+config.py # carga/guarda cuentas_por_cobrar_config.json
+bitacora.py # CRUD + verificación QVET obligatoria
+cruce_convenios.py # cruce con la tabla convenios
+whatsapp.py # renderizado de plantillas + URL wa.me
+
+routers/cuentas_por_cobrar.py # ~15 endpoints
+
+templates/cuentas_por_cobrar.html
+
+json/cuentas_por_cobrar_config.json # NO va a git
+uploads/cpc/ # NO va a git
+
+
+### 19.3. Endpoints
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/cuentas_por_cobrar` | Página principal. |
+| GET | `/cuentas_por_cobrar/datos` | JSON con filas + totales. Acepta `estado`, `semaforo`, `prioridad`, `desde`, `hasta`, `q`, `solo_vencidas`, `incluir_institucionales`, `incluir_convenios`, `rol`. |
+| GET | `/cuentas_por_cobrar/{cid}` | Detalle del cliente + albaranes + bitácora + `tiene_promesa_vigente`. |
+| POST | `/cuentas_por_cobrar/importar` | Sube Excel de QVET, parsea, upsert, cruza convenios. |
+| POST | `/cuentas_por_cobrar/reverificar-convenios` | Cruza todos los clientes contra convenios. |
+| POST | `/cuentas_por_cobrar/{cid}/reverificar-convenio` | Cruza un cliente puntual. |
+| POST | `/cuentas_por_cobrar/{cid}/estado` | Cambia estado, prioridad, próximo contacto, notas internas, teléfono, email, RFC. |
+| POST | `/cuentas_por_cobrar/{cid}/bitacora` | Agrega entrada a bitácora. |
+| POST | `/cuentas_por_cobrar/{cid}/verificar-qvet` | Registra "verificado en QVET". |
+| POST | `/cuentas_por_cobrar/{cid}/institucional` | Marca/desmarca institucional. |
+| POST | `/cuentas_por_cobrar/limpiar-basura` | Elimina clientes basura (ID inválido o sin albaranes, sin bitácora). |
+| GET | `/cuentas_por_cobrar/plantillas` | Lista plantillas WhatsApp. |
+| POST | `/cuentas_por_cobrar/plantilla-activa` | Guarda plantilla activa en config. |
+| GET | `/cuentas_por_cobrar/{cid}/whatsapp?plantilla=X` | Devuelve `{url, mensaje, telefono, plantilla}`. |
+| POST | `/cuentas_por_cobrar/{cid}/whatsapp-enviado` | Registra en bitácora que se envió WhatsApp. |
+
+### 19.4. Flujo de importación
+
+1. Sube el Excel de QVET (botón "Importar Excel").
+2. `parser_qvet.py` detecta encabezado por columnas (`IDCLIENTE`,
+   `CODIGO ALBARAN`), tolera fechas con/sin hora, agrupa por
+   `IDCLIENTE`, omite fila de totales.
+3. `_upsert_cliente` hace upsert por `idcliente_qvet`. En clientes
+   existentes **NO pisa**: `es_institucional`, `es_convenio`, `estado`,
+   `prioridad`, `notas_internas`, `telefono` (si origen `manual`),
+   `email` (si origen `manual`).
+4. Albaranes que ya no vienen en el Excel → `deuda = 0`.
+5. Recalcula `saldo` de todos los clientes.
+6. **Cruce con convenios PRIMERO** (para que no se pisen a pagado).
+7. Clientes con saldo 0 → `pagado` (excepto institucional, convenio,
+   cancelado, disputa).
+8. Registra la importación en `cpc_importaciones`.
+
+### 19.5. Estados de un cliente
+
+- `pendiente` — recién importado, sin gestionar.
+- `asignada` — asignado a recepción para cobranza.
+- `contactado` — ya se contactó (requiere verificación QVET previa).
+- `promesa_pago` — el cliente prometió pagar (requiere verificación QVET).
+- `pagado` — saldo 0 (automático o manual).
+- `no_localizado` — no se pudo contactar.
+- `disputa` — el cliente disputa el adeudo.
+- `cancelado` — adeudo cancelado por admin.
+- `institucional` — cobranza por administración (no recepción).
+- `convenio` — cobranza por convenio de pago activo.
+
+**Estados bloqueados sin verificación QVET:** `contactado`,
+`promesa_pago`, `pagado`. El primer registro de bitácora con
+`resultado='verificado_en_qvet'` desbloquea estos estados.
+
+### 19.6. WhatsApp
+
+Plantillas configurables en `cuentas_por_cobrar_config.json`:
+
+- `recordatorio_amable` — primer contacto, tono suave.
+- `recordatorio_firme` — segundo contacto, tono firme.
+- `recordatorio_multi` — cliente con varios albaranes.
+- `promesa_seguimiento` — seguimiento de promesa (requiere `promesa_fecha` y `promesa_monto`).
+- `convenio_notificacion` — cliente con convenio activo.
+
+Placeholders: `{cliente}`, `{saldo}`, `{mascota}`, `{dias}`,
+`{n_albaranes}`, `{promesa_fecha}`, `{promesa_monto}`.
+
+Al enviar WhatsApp:
+1. Se abre `wa.me` en pestaña nueva.
+2. El mensaje se copia al portapapeles.
+3. Se registra automáticamente en bitácora (tipo `whatsapp`, resultado vacío).
+4. Se recarga el modal para ver la nueva entrada.
+
+**Plantilla activa:** `localStorage` (`vetsuite.cpc.plantilla_activa`) + config server-side.
+
+**Validación:** `promesa_seguimiento` requiere que el cliente tenga
+una promesa de pago vigente (`promesa_fecha >= hoy`, `promesa_monto > 0`).
+Si no, el backend rechaza el envío con 400.
+
+**Bloqueos del botón WhatsApp:**
+- Cliente institucional → deshabilitado.
+- Cliente con convenio activo → deshabilitado.
+- Cliente sin teléfono → deshabilitado.
+
+### 19.7. Permisos por rol
+
+Dos roles: `admin` y `recepcion`.
+
+**Selector de rol:** `<select>` nativo en la barra superior. Se guarda
+en `localStorage` (`vetsuite.rol`) y se manda al backend como query
+param `rol` en `/datos`.
+
+**Recepción NO ve:**
+- Botón "Importar Excel".
+- Botón "Limpiar basura".
+- Botón "Reverificar convenios".
+- Checkbox "Ver institucionales".
+- Notas internas en el modal.
+- Botón "Marcar como institucional".
+- Clientes institucionales (filtrados en backend).
+- Clientes con convenio (filtrados en backend).
+
+**Nota:** el rol es cosmético (no hay autenticación real). Un usuario
+malicioso podría mandar `rol=admin` y saltarse la restricción. Para
+permisos reales se necesita autenticación (login, sesión, IP-based).
+Pendiente para sesión futura.
+
+### 19.8. Configuración — `cuentas_por_cobrar_config.json`
+
+```json
+{
+  "institucionales": ["CLINICA BAALAK .", "..."],
+  "semaforo": {"verde_max": 30, "amarillo_max": 60, "naranja_max": 90},
+  "dias_por_vencer": 7,
+  "plantillas_whatsapp": { ... },
+  "plantilla_activa": "recordatorio_amable",
+  "adjuntos": {"max_mb": 5, "retencion_dias": 365, "tipos_permitidos": [...]},
+  "reporte_pdf": {"cliente": "Baalak Veterinaria", "logo": "static/logo.png", "firmas": [...]},
+  "roles": {"recepcion": [...], "admin": ["*"]}
+}
+
+19.9. Pendientes del módulo
+Adjuntos en bitácora (Bloque 4): capturas de WhatsApp o
+comprobantes de pago. Límite 5 MB, retención 365 días.
+
+Categorías adicionales (colaborador): migrar de
+es_institucional (booleano) a categoria (texto:
+normal | institucional | colaborador | convenio).
+
+Reportes con árbol (Año → Mes → Estado → Cliente): consistencia
+visual con Convenios, Ingresos, Egresos, Corte, Servicios Externos.
+
+Excel de exportación (3 hojas: Clientes, Albaranes, Bitácora).
+
+Reporte PDF de cobranza (formato carta con firmas).
+
+Autenticación real (login, sesión, IP-based) para que el rol no
+sea cosmético.
+
+19.10. Reglas del módulo
+101. v0.10.x: Cuentas por Cobrar agrupa por `IDCLIENTE` (llave natural
+     del Excel de QVET). Un cliente puede tener N albaranes.
+102. v0.10.x: Los albaranes se guardan en `cpc_albaranes` con upsert por
+     `codigo_albaran`. Reimportar no duplica; actualiza montos.
+103. v0.10.x: Reimportar NO pisa `es_institucional`, `es_convenio`,
+     `estado`, `prioridad`, `notas_internas`, ni `telefono`/`email` si
+     su origen es `manual`.
+104. v0.10.x: Si un albarán ya no aparece en el Excel, se marca
+     `deuda = 0` y `cobrado_linea = total_importe`. NO se borra.
+105. v0.10.x: Si un cliente desaparece del Excel, queda con `saldo = 0`
+     y `estado = 'pagado'`. NO se borra.
+106. v0.10.x: Los clientes institucionales (lista configurable) se
+     marcan automáticamente en el INSERT. En reimportaciones, se
+     respeta el valor manual.
+107. v0.10.x: Al importar se cruza contra `convenios`. Si hay convenio
+     activo (`firmado` o `impreso`), `es_convenio = 1` y
+     `estado = 'convenio'` (excepto si ya estaba en `pagado`,
+     `cancelado` o `disputa`).
+108. v0.10.x: El primer registro de bitácora con
+     `resultado='verificado_en_qvet'` es obligatorio antes de marcar
+     `contactado`, `promesa_pago` o `pagado`.
+109. v0.10.x: `pago_realizado` en bitácora NO cambia montos. Solo
+     sugiere al admin marcar el cliente como pagado.
+110. v0.10.x: El semáforo de antigüedad (verde/amarillo/naranja/rojo)
+     se configura en `cuentas_por_cobrar_config.json`.
+111. v0.10.x: La plantilla `promesa_seguimiento` requiere que el cliente
+     tenga una promesa de pago vigente registrada en la bitácora.
+112. v0.10.x: El botón "Enviar WhatsApp" se deshabilita si el cliente
+     es institucional, tiene convenio activo, o no tiene teléfono.
+113. v0.10.x: Al enviar WhatsApp, se registra automáticamente una
+     entrada en bitácora con tipo='whatsapp' y resultado='' (vacío).
+114. v0.10.x: La plantilla activa vive en localStorage
+     (`vetsuite.cpc.plantilla_activa`) y en el config server-side.
+115. v0.10.x: El selector de rol es un `<select>` nativo (no dropdown de
+     Bootstrap). Los valores son `admin` y `recepcion`.
+116. v0.10.x: El rol se guarda en localStorage (`vetsuite.rol`) y se
+     manda al backend como query param `rol`.
+117. v0.10.x: Recepción no ve los botones de admin, ni las notas
+     internas, ni el botón de institucional. El backend filtra
+     `es_institucional = 0` y `es_convenio = 0` para recepción.
+118. v0.10.x: El rol es cosmético (no hay autenticación real). Para
+     permisos reales se necesita autenticación (login, sesión,
+     IP-based). Pendiente para sesión futura.
+119. v0.10.x: El historial de bitácora del modal tiene
+     `max-height: 240px` y `overflow-y: auto`. La tabla de albaranes
+     tiene `max-height: 220px`. El modal completo usa `height: 85vh`
+     con header y footer fijos.
+120. v0.10.x: Los badges con fondo de color (`bg-primary`, etc.)
+     requieren `text-white` explícito para que el texto se lea.

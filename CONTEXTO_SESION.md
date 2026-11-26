@@ -1,3 +1,326 @@
+# Sesión de trabajo — 2026-11-25 (VetSuite Web v0.10.x — Cuentas por Cobrar: WhatsApp y permisos)
+
+## Resumen
+
+Sesión de cierre de dos bloques de **Cuentas por Cobrar**:
+
+1. **Bloque 3 — WhatsApp**: integración de plantillas configurables,
+   envío vía `wa.me`, registro automático en bitácora, validación de
+   placeholders.
+2. **Bloque 5 — Permisos por rol**: selector Admin/Recepción,
+   ocultamiento de botones y filtrado de datos por rol.
+
+Además se resolvieron bugs de reimportación (no pisar
+`es_institucional` ni `es_convenio`), se ajustó el layout del modal
+(historial y albaranes con scroll interno), y se documentó todo el
+módulo en `CONTEXTO.md`.
+
+Se completó:
+- `core/cuentas_por_cobrar/whatsapp.py` — renderizado de plantillas +
+  construcción de URLs `wa.me` + validación de placeholders.
+- Endpoints nuevos: `/plantillas`, `/plantilla-activa`,
+  `/{cid}/whatsapp`, `/{cid}/whatsapp-enviado`.
+- Frontend: botón "Enviar WhatsApp" + dropdown de plantillas en el
+  modal.
+- Validación de `promesa_seguimiento` (requiere promesa vigente).
+- Selector de rol Admin/Recepción (`<select>` nativo).
+- `aplicarRol()` defensivo + ocultamiento de botones de admin.
+- Filtrado backend por rol en `/datos`.
+- Fix del `_upsert_cliente` (no pisar `es_institucional` ni `es_convenio`).
+- Fix del orden en `/importar` (cruce de convenios antes del
+  `UPDATE` a pagado).
+- Fix de layout del modal (historial y albaranes con scroll).
+- Documentación completa en `CONTEXTO.md` (sección 19).
+
+## Qué se hizo
+
+### 1. WhatsApp con plantillas
+
+**Backend:**
+- `core/cuentas_por_cobrar/whatsapp.py`:
+  - `renderizar(plantilla, contexto)` — sustituye placeholders.
+  - `construir_url(telefono, mensaje)` — normaliza el teléfono y
+    construye `https://wa.me/<tel>?text=<urlencoded>`.
+  - `construir_contexto(cliente, albaranes)` — arma el dict con
+    `{cliente}`, `{saldo}`, `{mascota}`, `{dias}`, `{n_albaranes}`.
+  - `validar_placeholders(clave, contexto)` — valida que
+    `promesa_seguimiento` tenga `promesa_fecha` y `promesa_monto`.
+
+**Endpoints:**
+- `GET /cuentas_por_cobrar/plantillas` — lista plantillas disponibles
+  y la activa.
+- `POST /cuentas_por_cobrar/plantilla-activa` — guarda la activa en
+  config.
+- `GET /cuentas_por_cobrar/{cid}/whatsapp?plantilla=X` — devuelve
+  `{url, mensaje, telefono, plantilla}`. Bloquea si el cliente es
+  institucional, tiene convenio, o no tiene teléfono. Valida
+  placeholders (rechaza `promesa_seguimiento` sin promesa vigente).
+- `POST /cuentas_por_cobrar/{cid}/whatsapp-enviado` — registra en
+  bitácora (tipo `whatsapp`, resultado vacío).
+
+**Frontend:**
+- Botón "Enviar WhatsApp" + dropdown de plantillas en el modal.
+- Al enviar: abre `wa.me`, copia al portapapeles, registra en
+  bitácora, recarga el modal.
+- `promesa_seguimiento` se deshabilita si no hay promesa vigente.
+
+**Config:**
+- 5 plantillas en `cuentas_por_cobrar_config.json`:
+  `recordatorio_amable`, `recordatorio_firme`, `recordatorio_multi`,
+  `promesa_seguimiento`, `convenio_notificacion`.
+- Plantilla activa en `localStorage` (`vetsuite.cpc.plantilla_activa`)
+  + config server-side.
+
+### 2. Permisos por rol
+
+**Frontend:**
+- Selector de rol (`<select>` nativo) en la barra superior.
+- Valores: `admin` y `recepcion`.
+- Se guarda en `localStorage` (`vetsuite.rol`).
+- `aplicarRol()` defensivo (tolera `null`):
+  - Recepción no ve: Importar, Limpiar basura, Reverificar convenios,
+    checkbox "Ver institucionales", notas internas, botón institucional.
+  - Admin ve todo.
+
+**Backend:**
+- `/datos` acepta `rol` como query param.
+- Recepción: filtra `es_institucional = 0` y `es_convenio = 0`.
+- Admin: ve todo (con `incluir_institucionales` opcional).
+
+### 3. Fix de reimportación
+
+**Problema:** el `_upsert_cliente` pisaba `es_institucional` con el
+valor del Excel (que no trae esa columna). Por eso los clientes
+marcados manualmente como institucionales se desmarcaban al reimportar.
+
+**Fix:** quitar `es_institucional = ?` del `UPDATE` y `es_convenio = ?`
+del `UPDATE`. Solo se establecen en el `INSERT` (clientes nuevos).
+
+**Sincronización de datos:** script para corregir clientes con
+`estado = 'institucional'` pero `es_institucional = 0`:
+```sql
+UPDATE cpc_clientes SET es_institucional = 1
+WHERE estado = 'institucional' AND es_institucional = 0;
+
+4. Fix de orden en /importar
+Problema: el UPDATE de saldo 0 se ejecutaba antes del cruce
+con convenios, así que los clientes con convenio se pisaban a
+pagado.
+
+Fix: mover el cruce antes del UPDATE:
+# Cruce con Convenios PRIMERO
+cruce = cruce_convenios.cruzar_todos(conn)
+
+# Clientes con saldo 0 → pagado (excluye convenio e institucional)
+conn.execute("""
+    UPDATE cpc_clientes SET estado = 'pagado'
+    WHERE saldo <= 0 AND es_institucional = 0
+      AND estado NOT IN ('pagado','institucional','convenio','cancelado','disputa')
+""")
+5. Fix de layout del modal
+Problema: el historial de bitácora y la tabla de albaranes
+crecían sin límite, empujando el modal hacia abajo.
+
+Fix:
+
+.historial-bitacora { max-height: 240px; overflow-y: auto; }.
+
+.tabla-scroll { max-height: 220px; overflow-y: auto; }.
+
+Modal completo: height: 85vh; display: flex; flex-direction: column.
+
+Header y footer fijos, body con scroll.
+
+6. Limpieza de convenios duplicados
+Problema: 5 convenios duplicados de Bruno Contreras Ramos por
+doble clic en "Guardar".
+
+Fix:
+
+Script de limpieza: borrar los duplicados sin pagos efectuados,
+conservar el más antiguo.
+
+Flag GUARDANDO en guardar() para evitar doble submit.
+
+Validación completa antes de guardar (campos obligatorios, plan de
+pagos, suma de pagos === total).
+
+Bugs resueltos
+_upsert_cliente pisaba es_institucional → quitarlo del
+UPDATE.
+
+_upsert_cliente pisaba es_convenio → quitarlo del UPDATE.
+
+UPDATE de saldo 0 pisaba convenios a pagado → mover el cruce
+antes.
+
+Convenios duplicados por doble clic → flag GUARDANDO + fix del
+400/500 que no se mostraban.
+
+ReferenceError: GUARDANDO is not defined → declarar
+let GUARDANDO = false; antes de guardar().
+
+Cannot read properties of null (reading 'classList') en
+aplicarRol → función defensiva con toggle(id, visible).
+
+Dropdown de rol no hacía nada → reemplazar por <select> nativo
+(Bootstrap JS no está cargado en base.html).
+
+Historial de bitácora crecía sin límite → max-height: 240px; overflow-y: auto.
+
+Badge de convenio sin text-white → agregar text-white al
+badge.
+
+Estado actual
+Funcional
+✅ Cuentas por Cobrar con importación de Excel QVET.
+
+✅ Agrupación por IDCLIENTE con albaranes detallados.
+
+✅ Política de origen (qvet vs manual) para teléfono/email.
+
+✅ Cruce con Convenios (por nombre normalizado).
+
+✅ Marcar/desmarcar institucional desde el modal.
+
+✅ Semáforo de antigüedad configurable.
+
+✅ Bitácora con verificación QVET obligatoria.
+
+✅ WhatsApp con 5 plantillas configurables + validación de
+placeholders.
+
+✅ Registro automático en bitácora al enviar WhatsApp.
+
+✅ Selector de rol Admin/Recepción.
+
+✅ Filtrado backend por rol.
+
+✅ Modal con scroll interno (historial y albaranes).
+
+✅ Todos los módulos anteriores siguen funcionando (Ingresos,
+Egresos, Recordatorios, Corte, Servicios Externos, Convenios,
+Catálogo QVET).
+
+Pendiente (Cuentas por Cobrar)
+📝 Adjuntos en bitácora (Bloque 4) — pausado.
+
+📝 Categorías adicionales (colaborador) — sesión futura.
+
+📝 Reportes con árbol (Año → Mes → Estado → Cliente).
+
+📝 Excel de exportación (3 hojas).
+
+📝 Reporte PDF de cobranza.
+
+📝 Autenticación real (login, sesión, IP-based).
+
+Pendiente (Convenios)
+📝 Eliminar convenios firmado sin pagos con confirmación doble
+(opcional).
+
+📝 Mejorar validación de transiciones (permitir
+borrador → firmado directamente si se necesita).
+
+Pendiente (global, arrastrado)
+🧪 Tests automáticos (el más grande).
+
+⏰ Arranque automático con el sistema en macOS (ya implementado con
+launchd).
+
+Cómo trabajar
+Arrancar: uvicorn main:app --reload --host 127.0.0.1 --port 8000
+
+Probar Cuentas por Cobrar: http://127.0.0.1:8000/cuentas_por_cobrar
+
+Probar Convenios: http://127.0.0.1:8000/convenios
+
+Importar Excel QVET: botón "Importar Excel" en Cuentas por Cobrar.
+
+Cambiar rol: selector Admin/Recepción en la barra superior.
+
+Enviar WhatsApp: abrir cliente → botón "Enviar WhatsApp".
+
+Limpiar basura: botón "Limpiar basura" (solo admin).
+
+Reglas nuevas (Cuentas por Cobrar / WhatsApp / Permisos)
+
+v0.10.x: Cuentas por Cobrar agrupa por IDCLIENTE (llave natural
+del Excel de QVET). Un cliente puede tener N albaranes.
+
+v0.10.x: Reimportar NO pisa es_institucional, es_convenio,
+estado, prioridad, notas_internas, ni telefono/email si
+su origen es manual.
+
+v0.10.x: Si un albarán ya no aparece en el Excel, se marca
+deuda = 0. Si un cliente desaparece, queda con saldo = 0 y
+estado = 'pagado'. NO se borra.
+
+v0.10.x: Al importar se cruza contra convenios. Si hay convenio
+activo (firmado o impreso), es_convenio = 1 y
+estado = 'convenio' (excepto si ya estaba en pagado,
+cancelado o disputa).
+
+v0.10.x: El cruce con convenios se ejecuta ANTES del UPDATE de
+saldo 0, para que los convenios no se pisen a pagado.
+
+v0.10.x: El primer registro de bitácora con
+resultado='verificado_en_qvet' es obligatorio antes de marcar
+contactado, promesa_pago o pagado.
+
+v0.10.x: pago_realizado en bitácora NO cambia montos. Solo
+sugiere al admin marcar el cliente como pagado.
+
+v0.10.x: La plantilla promesa_seguimiento requiere que el
+cliente tenga una promesa de pago vigente (promesa_fecha >= hoy
+y promesa_monto > 0). Si no, el backend rechaza el envío con
+400.
+
+v0.10.x: Al enviar WhatsApp, se registra automáticamente una
+entrada en bitácora con tipo='whatsapp' y resultado='' (vacío).
+
+v0.10.x: La plantilla activa vive en localStorage
+(vetsuite.cpc.plantilla_activa) y en el config server-side.
+
+v0.10.x: El selector de rol es un <select> nativo (no dropdown
+de Bootstrap). Los valores son admin y recepcion.
+
+v0.10.x: El rol se guarda en localStorage (vetsuite.rol) y se
+manda al backend como query param rol.
+
+v0.10.x: Recepción no ve los botones de admin, ni las notas
+internas, ni el botón de institucional. El backend filtra
+es_institucional = 0 y es_convenio = 0 para recepción.
+
+v0.10.x: El rol es cosmético (no hay autenticación real). Para
+permisos reales se necesita autenticación (login, sesión,
+IP-based). Pendiente para sesión futura.
+
+v0.10.x: El historial de bitácora del modal tiene
+max-height: 240px y overflow-y: auto. La tabla de albaranes
+tiene max-height: 220px. El modal completo usa height: 85vh
+con header y footer fijos.
+
+v0.10.x: Los badges con fondo de color (bg-primary, etc.)
+requieren text-white explícito para que el texto se lea.
+
+v0.10.x: aplicarRol() debe ser defensivo: usa
+toggle(id, visible) que tolera null. Si un elemento no
+existe, no lanza error.
+
+v0.10.x: El flag GUARDANDO en guardar() de Convenios evita
+doble submit. Se declara con let GUARDANDO = false; antes de
+la función.
+
+v0.10.x: Los convenios duplicados se limpian manualmente desde
+BD (script). Solo se borran los que están en borrador y sin
+pagos efectuados. Se conserva el más antiguo.
+
+v0.10.x: Si una regla CSS no se aplica (ej. max-height sí,
+overflow-y no), verificar con getComputedStyle(el).overflowY.
+El síntoma "height real > 0 pero scrollHeight > height real"
+significa que falta overflow-y: auto.
+
 # Sesión de trabajo — 2026-11-19/20 (VetSuite Web v0.9.x — Recordatorios: pestaña Libres)
 
 ## Resumen
@@ -224,6 +547,24 @@ Se completó:
      bitácora (con `promesa_fecha >= hoy` y `promesa_monto > 0`).
      Si no, el backend rechaza el envío con 400 y el frontend
      deshabilita la opción en el dropdown.
+151. v0.10.x: El selector de rol de Cuentas por Cobrar es un <select>
+     nativo (no dropdown de Bootstrap), porque Tabler JS no está
+     cargado en base.html. Los valores son 'admin' y 'recepcion'.
+152. v0.10.x: El rol se guarda en localStorage
+     (`vetsuite.rol`) y se manda al backend como query param `rol`
+     en `/datos`. El backend filtra:
+     - admin: ve todo (con `incluir_institucionales` opcional).
+     - recepcion: solo ve `es_institucional = 0` y `es_convenio = 0`.
+153. v0.10.x: Recepción no ve los botones: Importar, Limpiar basura,
+     Reverificar convenios, ni el checkbox "Ver institucionales".
+     Tampoco ve las notas internas ni el botón de institucional en
+     el modal.
+154. v0.10.x: El rol es cosmético (no hay autenticación real). Un
+     usuario malicioso podría mandar `rol=admin` y saltarse la
+     restricción. Para permisos reales se necesita autenticación
+     (login, sesión, IP-based). Pendiente para sesión futura.
+155. v0.10.x: `aplicarRol()` debe ser defensivo: usa `toggle(id, visible)`
+     que tolera `null`. Si un elemento no existe, no lanza error.
 
 # Sesión de trabajo — 2026-11-17 (VetSuite Web v0.9.x — deuda técnica del refactor)
 
